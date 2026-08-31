@@ -10,10 +10,10 @@ import {
   query,
   orderBy,
   Timestamp,
+  type Firestore,
 } from 'firebase/firestore';
 import type { ClubEvent, Member, Attendance, Expense } from '../types';
 
-// 環境変数 .env.local に設定してください
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -23,8 +23,14 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+let db: Firestore;
+try {
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+} catch (e) {
+  console.error('Firebase 初期化エラー:', e);
+  throw e;
+}
 
 // ── Events ──────────────────────────────────────────
 

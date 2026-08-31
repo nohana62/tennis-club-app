@@ -1,14 +1,18 @@
-﻿/**
+/**
  * データサービスのエントリーポイント
- * VITE_DEMO_MODE=true の場合はモックデータを使用
- * VITE_DEMO_MODE=false の場合は Firebase Firestore を使用
+ * VITE_DEMO_MODE=true またはFirebase未設定 の場合はモックデータを使用
  */
 import type { ClubEvent, Member, Attendance, Expense } from "../types";
 
 import * as mock from "./mockFirebase";
 import * as fb from "./firebase";
 
-const svc = import.meta.env.VITE_DEMO_MODE === "true" ? mock : fb;
+const isDemo = import.meta.env.VITE_DEMO_MODE === "true";
+const hasFirebaseConfig = !!(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+  import.meta.env.VITE_FIREBASE_PROJECT_ID
+);
+const svc = (isDemo || !hasFirebaseConfig) ? mock : fb;
 
 export const getEvents   = (): Promise<ClubEvent[]>                          => svc.getEvents();
 export const addEvent    = (e: Omit<ClubEvent, "id">): Promise<string>       => svc.addEvent(e);
