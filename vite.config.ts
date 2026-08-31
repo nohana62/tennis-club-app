@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: '/tennis-club-app/',
   plugins: [
     react(),
     tailwindcss(),
