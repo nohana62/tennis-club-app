@@ -8,7 +8,7 @@ import SettingsPage from "./pages/Settings/SettingsPage";
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/tennis-club-app">
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<SchedulePage />} />
