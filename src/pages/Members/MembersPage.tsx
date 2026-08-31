@@ -1,7 +1,9 @@
-﻿import { useEffect, useState } from 'react';
-import { Plus, X, Pencil, Trash2, UserCheck, UserX, Clock } from 'lucide-react';
+﻿import { useEffect, useRef, useState } from 'react';
+import { Plus, X, Pencil, Trash2, UserCheck, UserX, Clock, GripVertical } from 'lucide-react';
 import { getMembers, addMember, updateMember, deleteMember, getAttendances, setAttendance, updateAttendance, getEvents } from '../../services/index';
 import type { Member, Attendance, AttendanceStatus, ClubEvent } from '../../types';
+
+const MEMBER_ORDER_KEY = 'tennis_club_member_order';
 
 const EMPTY_MEMBER: Omit<Member, 'id'> = {
   name: '',
@@ -29,6 +31,14 @@ const STATUS_COLOR: Record<AttendanceStatus, string> = {
   pending: 'bg-gray-100 text-gray-500',
 };
 
+function applyOrder(members: Member[], order: string[]): Member[] {
+  if (order.length === 0) return members;
+  const map = new Map(members.map(m => [m.id!, m]));
+  const ordered = order.filter(id => map.has(id)).map(id => map.get(id)!);
+  const rest = members.filter(m => !order.includes(m.id!));
+  return [...ordered, ...rest];
+}
+
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [events, setEvents] = useState<ClubEvent[]>([]);
@@ -39,13 +49,18 @@ export default function MembersPage() {
   const [selectedEvent, setSelectedEvent] = useState<string>('');
   const [tab, setTab] = useState<'members' | 'attendance'>('members');
 
+  // ドラッグ並び替え用
+  const dragIndex = useRef<number | null>(null);
+  const dragOverIndex = useRef<number | null>(null);
+
   useEffect(() => {
     load();
   }, []);
 
   async function load() {
     const [m, e, a] = await Promise.all([getMembers(), getEvents(), getAttendances()]);
-    setMembers(m);
+    const savedOrder: string[] = JSON.parse(localStorage.getItem(MEMBER_ORDER_KEY) ?? '[]');
+    setMembers(applyOrder(m, savedOrder));
     setEvents(e);
     setAttendances(a);
     if (e.length > 0 && !selectedEvent) setSelectedEvent(e[0].id ?? '');
@@ -77,6 +92,52 @@ export default function MembersPage() {
     }
     const fresh = await getAttendances();
     setAttendances(fresh);
+  }
+
+  // ── ドラッグ並び替えハンドラ ──────────────────────────
+  function onDragStart(index: number) {
+    dragIndex.current = index;
+  }
+  function onDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    dragOverIndex.current = index;
+  }
+  function onDrop() {
+    if (dragIndex.current === null || dragOverIndex.current === null) return;
+    if (dragIndex.current === dragOverIndex.current) return;
+    const next = [...members];
+    const [moved] = next.splice(dragIndex.current, 1);
+    next.splice(dragOverIndex.current, 0, moved);
+    setMembers(next);
+    localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(next.map(m => m.id!)));
+    dragIndex.current = null;
+    dragOverIndex.current = null;
+  }
+
+  // タッチ並び替えハンドラ（iPhone用）
+  const touchStartY = useRef<number>(0);
+  const touchItemIndex = useRef<number | null>(null);
+
+  function onTouchStart(e: React.TouchEvent, index: number) {
+    touchStartY.current = e.touches[0].clientY;
+    touchItemIndex.current = index;
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchItemIndex.current === null) return;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    const itemHeight = 72; // 推定カード高さ
+    const steps = Math.round(dy / itemHeight);
+    if (steps === 0) { touchItemIndex.current = null; return; }
+    const from = touchItemIndex.current;
+    const to = Math.max(0, Math.min(members.length - 1, from + steps));
+    if (from !== to) {
+      const next = [...members];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      setMembers(next);
+      localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(next.map(m => m.id!)));
+    }
+    touchItemIndex.current = null;
   }
 
   const attendanceForEvent = attendances.filter(a => a.eventId === selectedEvent);
@@ -117,8 +178,26 @@ export default function MembersPage() {
       {tab === 'members' ? (
         <div className="space-y-2">
           {members.length === 0 && <p className="text-gray-400 text-sm">部員が登録されていません</p>}
-          {members.map((m) => (
-            <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+          {members.length > 1 && (
+            <p className="text-xs text-gray-400 flex items-center gap-1 mb-1">
+              <GripVertical size={12} /> 左端のアイコンをドラッグして並び替えできます
+            </p>
+          )}
+          {members.map((m, index) => (
+            <div
+              key={m.id}
+              draggable
+              onDragStart={() => onDragStart(index)}
+              onDragOver={(e) => onDragOver(e, index)}
+              onDrop={onDrop}
+              onTouchStart={(e) => onTouchStart(e, index)}
+              onTouchEnd={onTouchEnd}
+              className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 cursor-grab active:cursor-grabbing active:shadow-md active:border-green-300 transition-shadow"
+            >
+              {/* ドラッグハンドル */}
+              <div className="text-gray-300 shrink-0 touch-none select-none">
+                <GripVertical size={18} />
+              </div>
               <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm shrink-0">
                 {m.name.slice(0, 1)}
               </div>
