@@ -3,8 +3,6 @@ import { Plus, X, Pencil, Trash2, UserCheck, UserX, Clock, GripVertical } from '
 import { getMembers, addMember, updateMember, deleteMember, getAttendances, setAttendance, updateAttendance, getEvents } from '../../services/index';
 import type { Member, Attendance, AttendanceStatus, ClubEvent } from '../../types';
 
-const MEMBER_ORDER_KEY = 'tennis_club_member_order';
-
 const EMPTY_MEMBER: Omit<Member, 'id'> = {
   name: '',
   department: '',
@@ -31,12 +29,10 @@ const STATUS_COLOR: Record<AttendanceStatus, string> = {
   pending: 'bg-gray-100 text-gray-500',
 };
 
-function applyOrder(members: Member[], order: string[]): Member[] {
-  if (order.length === 0) return members;
-  const map = new Map(members.map(m => [m.id!, m]));
-  const ordered = order.filter(id => map.has(id)).map(id => map.get(id)!);
-  const rest = members.filter(m => !order.includes(m.id!));
-  return [...ordered, ...rest];
+async function saveOrder(ordered: Member[]) {
+  await Promise.all(ordered.map((m, i) => {
+    if (m.id && m.order !== i) return updateMember(m.id, { order: i });
+  }));
 }
 
 export default function MembersPage() {
@@ -49,18 +45,14 @@ export default function MembersPage() {
   const [selectedEvent, setSelectedEvent] = useState<string>('');
   const [tab, setTab] = useState<'members' | 'attendance'>('members');
 
-  // ドラッグ並び替え用
   const dragIndex = useRef<number | null>(null);
   const dragOverIndex = useRef<number | null>(null);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   async function load() {
     const [m, e, a] = await Promise.all([getMembers(), getEvents(), getAttendances()]);
-    const savedOrder: string[] = JSON.parse(localStorage.getItem(MEMBER_ORDER_KEY) ?? '[]');
-    setMembers(applyOrder(m, savedOrder));
+    setMembers(m);
     setEvents(e);
     setAttendances(a);
     if (e.length > 0 && !selectedEvent) setSelectedEvent(e[0].id ?? '');
@@ -94,7 +86,7 @@ export default function MembersPage() {
     setAttendances(fresh);
   }
 
-  // ── ドラッグ並び替えハンドラ ──────────────────────────
+  // ── ドラッグ並び替えハンドラ（PC） ──────────────────────────
   function onDragStart(index: number) {
     dragIndex.current = index;
   }
@@ -102,19 +94,19 @@ export default function MembersPage() {
     e.preventDefault();
     dragOverIndex.current = index;
   }
-  function onDrop() {
+  async function onDrop() {
     if (dragIndex.current === null || dragOverIndex.current === null) return;
     if (dragIndex.current === dragOverIndex.current) return;
     const next = [...members];
     const [moved] = next.splice(dragIndex.current, 1);
     next.splice(dragOverIndex.current, 0, moved);
     setMembers(next);
-    localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(next.map(m => m.id!)));
+    await saveOrder(next);
     dragIndex.current = null;
     dragOverIndex.current = null;
   }
 
-  // タッチ並び替えハンドラ（iPhone用）
+  // ── タッチ並び替えハンドラ（iPhone） ─────────────────────────
   const touchStartY = useRef<number>(0);
   const touchItemIndex = useRef<number | null>(null);
 
@@ -122,10 +114,10 @@ export default function MembersPage() {
     touchStartY.current = e.touches[0].clientY;
     touchItemIndex.current = index;
   }
-  function onTouchEnd(e: React.TouchEvent) {
+  async function onTouchEnd(e: React.TouchEvent) {
     if (touchItemIndex.current === null) return;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    const itemHeight = 72; // 推定カード高さ
+    const itemHeight = 72;
     const steps = Math.round(dy / itemHeight);
     if (steps === 0) { touchItemIndex.current = null; return; }
     const from = touchItemIndex.current;
@@ -135,7 +127,7 @@ export default function MembersPage() {
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       setMembers(next);
-      localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(next.map(m => m.id!)));
+      await saveOrder(next);
     }
     touchItemIndex.current = null;
   }
@@ -144,9 +136,17 @@ export default function MembersPage() {
   const getStatus = (memberId: string): AttendanceStatus =>
     attendanceForEvent.find(a => a.memberId === memberId)?.status ?? 'pending';
 
-  const attendRate = members.length
-    ? Math.round((attendanceForEvent.filter(a => a.status === 'attending').length / members.length) * 100)
-    : 0;
+  // 未回答 = 全部員数 - 参加数 - 欠席数（レコードなし部員も未回答扱い）
+  const attendingCount = members.filter(m => getStatus(m.id!) === 'attending').length;
+  const absentCount = members.filter(m => getStatus(m.id!) === 'absent').length;
+  const pendingCount = members.length - attendingCount - absentCount;
+  const attendRate = members.length ? Math.round((attendingCount / members.length) * 100) : 0;
+
+  const statCounts: Record<AttendanceStatus, number> = {
+    attending: attendingCount,
+    absent: absentCount,
+    pending: pendingCount,
+  };
 
   return (
     <div>
@@ -190,7 +190,6 @@ export default function MembersPage() {
               onDrop={onDrop}
               className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 transition-shadow"
             >
-              {/* ドラッグハンドル（ここだけドラッグ可能） */}
               <div
                 draggable
                 onDragStart={() => onDragStart(index)}
@@ -246,9 +245,7 @@ export default function MembersPage() {
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {(['attending', 'absent', 'pending'] as AttendanceStatus[]).map((s) => (
                   <div key={s} className={`rounded-xl p-3 text-center ${STATUS_COLOR[s]}`}>
-                    <div className="text-xl font-bold">
-                      {attendanceForEvent.filter(a => a.status === s).length}
-                    </div>
+                    <div className="text-xl font-bold">{statCounts[s]}</div>
                     <div className="text-xs">{STATUS_LABEL[s]}</div>
                   </div>
                 ))}

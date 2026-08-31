@@ -23,6 +23,7 @@ export interface Member {
   email: string;
   phone: string;
   role: 'admin' | 'member';
+  order?: number;
   joinedAt?: string;
 }
 

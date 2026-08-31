@@ -38,12 +38,13 @@ export async function deleteEvent(id: string): Promise<void> {
 // ── Members ─────────────────────────────────────────
 
 export async function getMembers(): Promise<Member[]> {
-  return [...members].sort((a, b) => a.name.localeCompare(b.name));
+  return [...members].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 export async function addMember(member: Omit<Member, 'id'>): Promise<string> {
   const id = genId();
-  members.push({ ...member, id, joinedAt: new Date().toISOString() });
+  const maxOrder = members.reduce((max, m) => (m.order ?? 0) > max ? (m.order ?? 0) : max, -1);
+  members.push({ ...member, id, order: maxOrder + 1, joinedAt: new Date().toISOString() });
   return id;
 }
 

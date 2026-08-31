@@ -59,14 +59,21 @@ export async function deleteEvent(id: string): Promise<void> {
 // ── Members ─────────────────────────────────────────
 
 export async function getMembers(): Promise<Member[]> {
-  const q = query(collection(db, 'members'), orderBy('name'));
+  const q = query(collection(db, 'members'), orderBy('order'));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Member));
 }
 
 export async function addMember(member: Omit<Member, 'id'>): Promise<string> {
+  // 既存部員の最大orderを取得して +1
+  const snap = await getDocs(collection(db, 'members'));
+  const maxOrder = snap.docs.reduce((max, d) => {
+    const o = (d.data() as Member).order ?? 0;
+    return o > max ? o : max;
+  }, -1);
   const ref = await addDoc(collection(db, 'members'), {
     ...member,
+    order: maxOrder + 1,
     joinedAt: Timestamp.now().toDate().toISOString(),
   });
   return ref.id;
