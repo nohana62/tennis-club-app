@@ -59,8 +59,8 @@ export default function SchedulePage() {
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [form, setForm] = useState<Omit<ClubEvent, "id">>(EMPTY_EVENT);
   const [loading, setLoading] = useState(true);
-  const [notifyLine, setNotifyLine] = useState(true);
-  const [notifyTeams, setNotifyTeams] = useState(true);
+  const [notifyLine, setNotifyLine] = useState(false);
+  const [notifyTeams, setNotifyTeams] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -578,7 +578,7 @@ export default function SchedulePage() {
               <input required type="text" placeholder="タイトル" value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="min-w-0">
                   <label className="text-xs text-gray-500">日付</label>
                   <input required type="date" value={form.date}
@@ -594,7 +594,7 @@ export default function SchedulePage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="min-w-0">
                   <label className="text-xs text-gray-500">開始</label>
                   <input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm min-w-0" />
@@ -615,7 +615,7 @@ export default function SchedulePage() {
                 <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
                   <DollarSign size={12} /> 使用料金（経費に自動連携）
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="min-w-0">
                     <label className="text-xs text-gray-500">金額 (円)</label>
                     <input type="number" min={0} value={form.fee ?? 0}
