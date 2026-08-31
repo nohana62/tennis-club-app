@@ -186,16 +186,18 @@ export default function MembersPage() {
           {members.map((m, index) => (
             <div
               key={m.id}
-              draggable
-              onDragStart={() => onDragStart(index)}
               onDragOver={(e) => onDragOver(e, index)}
               onDrop={onDrop}
-              onTouchStart={(e) => onTouchStart(e, index)}
-              onTouchEnd={onTouchEnd}
-              className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 cursor-grab active:cursor-grabbing active:shadow-md active:border-green-300 transition-shadow"
+              className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 transition-shadow"
             >
-              {/* ドラッグハンドル */}
-              <div className="text-gray-300 shrink-0 touch-none select-none">
+              {/* ドラッグハンドル（ここだけドラッグ可能） */}
+              <div
+                draggable
+                onDragStart={() => onDragStart(index)}
+                onTouchStart={(e) => onTouchStart(e, index)}
+                onTouchEnd={onTouchEnd}
+                className="text-gray-300 shrink-0 touch-none select-none cursor-grab active:cursor-grabbing p-1"
+              >
                 <GripVertical size={18} />
               </div>
               <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm shrink-0">
