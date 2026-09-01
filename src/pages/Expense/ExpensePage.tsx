@@ -36,7 +36,9 @@ export default function ExpensePage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [form, setForm] = useState<Omit<Expense, 'id'>>(EMPTY_EXPENSE);
+  const [filterMode, setFilterMode] = useState<'month' | 'year'>('month');
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [filterYear, setFilterYear] = useState(format(new Date(), 'yyyy'));
 
   // 認証状態（セッション中のみ維持）
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -85,7 +87,9 @@ export default function ExpensePage() {
     }
   }
 
-  const filteredExpenses = expenses.filter((e) => e.date.startsWith(filterMonth));
+  const filteredExpenses = expenses.filter((e) =>
+    filterMode === 'month' ? e.date.startsWith(filterMonth) : e.date.startsWith(filterYear)
+  );
   const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   const byCategory = (Object.keys(CATEGORY_LABELS) as ExpenseCategory[]).map((cat) => ({
@@ -129,14 +133,40 @@ export default function ExpensePage() {
         </div>
       </div>
 
-      {/* 月フィルター */}
-      <div className="mb-4">
-        <input
-          type="month"
-          value={filterMonth}
-          onChange={(e) => setFilterMonth(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm"
-        />
+      {/* 期間フィルター */}
+      <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          <button
+            onClick={() => setFilterMode('month')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${filterMode === 'month' ? 'bg-white shadow text-green-700' : 'text-gray-500'}`}
+          >
+            月間
+          </button>
+          <button
+            onClick={() => setFilterMode('year')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${filterMode === 'year' ? 'bg-white shadow text-green-700' : 'text-gray-500'}`}
+          >
+            年間
+          </button>
+        </div>
+        {filterMode === 'month' ? (
+          <input
+            type="month"
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm"
+          />
+        ) : (
+          <select
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm"
+          >
+            {Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
+              <option key={y} value={y}>{y}年</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* サマリーカード */}

@@ -109,8 +109,15 @@ export default function BoardPage() {
 
       {/* 投稿フォームモーダル */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-end md:items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-5 max-h-[85vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/40 z-50 overflow-y-auto overscroll-contain"
+          onClick={() => setShowForm(false)}
+        >
+          <div className="min-h-full flex items-start md:items-center justify-center p-4 py-8">
+            <div
+              className="bg-white rounded-xl w-full max-w-lg p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-gray-800">掲示板に投稿</h2>
               <button onClick={() => setShowForm(false)}><X size={20} /></button>
@@ -187,6 +194,7 @@ export default function BoardPage() {
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
