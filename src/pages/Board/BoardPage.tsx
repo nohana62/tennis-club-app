@@ -110,12 +110,12 @@ export default function BoardPage() {
       {/* 投稿フォームモーダル */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-end md:items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-5">
+          <div className="bg-white rounded-xl w-full max-w-lg p-5 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-gray-800">掲示板に投稿</h2>
               <button onClick={() => setShowForm(false)}><X size={20} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-3 pb-2">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">名前 *</label>
                 <input
