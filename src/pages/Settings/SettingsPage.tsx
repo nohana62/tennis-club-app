@@ -245,6 +245,11 @@ export default function SettingsPage() {
       >
         {saved ? <><CheckCircle size={16} /> 保存しました！（全デバイスに反映）</> : <><Save size={16} /> 設定を保存</>}
       </button>
+
+      {/* バージョン表示：デプロイが反映されているか確認用 */}
+      <p className="text-center text-xs text-gray-300 mt-4">
+        バージョン: {new Date(__BUILD_TIME__).toLocaleString('ja-JP')}
+      </p>
     </div>
   );
 }
