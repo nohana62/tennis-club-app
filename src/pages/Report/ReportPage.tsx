@@ -148,7 +148,6 @@ ${yearlySection}
     const GREEN_DARK = '166534';
     const GREEN_LIGHT = 'DCFCE7';
     const GREEN_MID = '86EFAC';
-    const GRAY_LIGHT = 'F9FAFB';
 
     function addTitle(text: string) {
       const row = ws.addRow([text]);
