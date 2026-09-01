@@ -6,6 +6,8 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  getDoc,
+  setDoc,
   getDocs,
   query,
   orderBy,
@@ -131,4 +133,33 @@ export async function updateExpense(id: string, expense: Partial<Expense>): Prom
 
 export async function deleteExpense(id: string): Promise<void> {
   await deleteDoc(doc(db, 'expenses', id));
+}
+
+// ── App Config (shared settings) ────────────────────
+
+export interface AppConfig {
+  expensePassword: string;
+  teamsWebhookUrl: string;
+  lineToken: string;
+  lineGroupId: string;
+}
+
+const CONFIG_DOC = 'appConfig';
+const DEFAULT_CONFIG: AppConfig = {
+  expensePassword: 'tennis123',
+  teamsWebhookUrl: '',
+  lineToken: '',
+  lineGroupId: '',
+};
+
+export async function getAppConfig(): Promise<AppConfig> {
+  const ref = doc(db, 'settings', CONFIG_DOC);
+  const snap = await getDoc(ref);
+  if (snap.exists()) return { ...DEFAULT_CONFIG, ...snap.data() } as AppConfig;
+  return { ...DEFAULT_CONFIG };
+}
+
+export async function saveAppConfig(data: Partial<AppConfig>): Promise<void> {
+  const ref = doc(db, 'settings', CONFIG_DOC);
+  await setDoc(ref, data, { merge: true });
 }

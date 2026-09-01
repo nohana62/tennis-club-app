@@ -1,7 +1,6 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, X, Trash2, Pencil, Lock, Unlock, Eye, EyeOff } from 'lucide-react';
-import { getExpenses, addExpense, updateExpense, deleteExpense, getMembers } from '../../services/index';
-import { checkExpensePassword } from '../../services/expensePassword';
+import { getExpenses, addExpense, updateExpense, deleteExpense, getMembers, getAppConfig } from '../../services/index';
 import type { Expense, ExpenseCategory, Member } from '../../types';
 import { format } from 'date-fns';
 
@@ -45,8 +44,12 @@ export default function ExpensePage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [expensePassword, setExpensePasswordState] = useState('tennis123');
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    getAppConfig().then((c) => setExpensePasswordState(c.expensePassword));
+  }, []);
 
   async function load() {
     const [e, m] = await Promise.all([getExpenses(), getMembers()]);
@@ -72,7 +75,7 @@ export default function ExpensePage() {
   }
 
   function handleUnlock() {
-    if (checkExpensePassword(passwordInput)) {
+    if (passwordInput === expensePassword) {
       setIsUnlocked(true);
       setShowPasswordModal(false);
       setPasswordInput('');

@@ -1,15 +1,14 @@
 ﻿/**
  * Microsoft Teams Incoming Webhook 通知サービス
- * 設定は「通知設定」画面から入力するか .env.local に記載
  */
-import { loadSettings } from "./notificationSettings";
+import { getAppConfig } from "./index";
 
 export async function sendTeamsMessage(
   title: string,
   text: string,
   color = "00a550"
 ): Promise<void> {
-  const { teamsWebhookUrl: WEBHOOK_URL } = loadSettings();
+  const { teamsWebhookUrl: WEBHOOK_URL } = await getAppConfig();
   if (!WEBHOOK_URL) {
     console.warn("[Teams] 設定が未完了です。通知設定画面で設定してください。");
     return;

@@ -3,6 +3,7 @@
  * VITE_DEMO_MODE=true またはFirebase未設定 の場合はモックデータを使用
  */
 import type { ClubEvent, Member, Attendance, Expense } from "../types";
+import type { AppConfig } from "./firebase";
 
 import * as mock from "./mockFirebase";
 import * as fb from "./firebase";
@@ -32,3 +33,7 @@ export const getExpenses   = (): Promise<Expense[]>                          => 
 export const addExpense    = (e: Omit<Expense, "id">): Promise<string>       => svc.addExpense(e);
 export const updateExpense = (id: string, e: Partial<Expense>): Promise<void>=> svc.updateExpense(id, e);
 export const deleteExpense = (id: string): Promise<void>                      => svc.deleteExpense(id);
+
+export type { AppConfig };
+export const getAppConfig  = (): Promise<AppConfig>              => svc.getAppConfig();
+export const saveAppConfig = (d: Partial<AppConfig>): Promise<void> => svc.saveAppConfig(d);

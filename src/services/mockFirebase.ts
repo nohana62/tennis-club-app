@@ -93,3 +93,33 @@ export async function updateExpense(id: string, data: Partial<Expense>): Promise
 export async function deleteExpense(id: string): Promise<void> {
   expenses = expenses.filter((e) => e.id !== id);
 }
+
+// ── App Config ───────────────────────────────────────
+
+export interface AppConfig {
+  expensePassword: string;
+  teamsWebhookUrl: string;
+  lineToken: string;
+  lineGroupId: string;
+}
+
+const LS_CONFIG_KEY = 'tennis_club_app_config';
+const DEFAULT_CONFIG: AppConfig = {
+  expensePassword: 'tennis123',
+  teamsWebhookUrl: '',
+  lineToken: '',
+  lineGroupId: '',
+};
+
+export async function getAppConfig(): Promise<AppConfig> {
+  try {
+    const raw = localStorage.getItem(LS_CONFIG_KEY);
+    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_CONFIG };
+}
+
+export async function saveAppConfig(data: Partial<AppConfig>): Promise<void> {
+  const current = await getAppConfig();
+  localStorage.setItem(LS_CONFIG_KEY, JSON.stringify({ ...current, ...data }));
+}
