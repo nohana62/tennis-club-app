@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
-import { Plus, X, Trash2, Pencil } from 'lucide-react';
+import { Plus, X, Trash2, Pencil, Lock, Unlock, Eye, EyeOff } from 'lucide-react';
 import { getExpenses, addExpense, updateExpense, deleteExpense, getMembers } from '../../services/index';
+import { checkExpensePassword } from '../../services/expensePassword';
 import type { Expense, ExpenseCategory, Member } from '../../types';
 import { format } from 'date-fns';
 
@@ -38,9 +39,14 @@ export default function ExpensePage() {
   const [form, setForm] = useState<Omit<Expense, 'id'>>(EMPTY_EXPENSE);
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
 
-  useEffect(() => {
-    load();
-  }, []);
+  // 認証状態（セッション中のみ維持）
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  useEffect(() => { load(); }, []);
 
   async function load() {
     const [e, m] = await Promise.all([getExpenses(), getMembers()]);
@@ -65,16 +71,25 @@ export default function ExpensePage() {
     await load();
   }
 
+  function handleUnlock() {
+    if (checkExpensePassword(passwordInput)) {
+      setIsUnlocked(true);
+      setShowPasswordModal(false);
+      setPasswordInput('');
+      setPasswordError('');
+    } else {
+      setPasswordError('パスワードが違います');
+    }
+  }
+
   const filteredExpenses = expenses.filter((e) => e.date.startsWith(filterMonth));
   const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-  // カテゴリ別集計
   const byCategory = (Object.keys(CATEGORY_LABELS) as ExpenseCategory[]).map((cat) => ({
     cat,
     total: filteredExpenses.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
   })).filter(c => c.total > 0);
 
-  // 按分計算
   const memberCount = members.length;
   const perPerson = memberCount > 0 ? Math.ceil(totalAmount / memberCount) : 0;
 
@@ -82,12 +97,33 @@ export default function ExpensePage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-800">経費計算</h1>
-        <button
-          onClick={() => { setEditing(null); setForm(EMPTY_EXPENSE); setShowForm(true); }}
-          className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-green-700"
-        >
-          <Plus size={16} /> 経費追加
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 編集モード切り替えボタン */}
+          {isUnlocked ? (
+            <>
+              <button
+                onClick={() => { setEditing(null); setForm(EMPTY_EXPENSE); setShowForm(true); }}
+                className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-green-700"
+              >
+                <Plus size={16} /> 経費追加
+              </button>
+              <button
+                onClick={() => setIsUnlocked(false)}
+                className="flex items-center gap-1 bg-gray-200 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-300"
+                title="編集モードを終了"
+              >
+                <Unlock size={15} /> 編集中
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => { setShowPasswordModal(true); setPasswordError(''); setPasswordInput(''); }}
+              className="flex items-center gap-1 bg-gray-100 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-200 border border-gray-200"
+            >
+              <Lock size={15} /> 編集モード
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 月フィルター */}
@@ -163,19 +199,63 @@ export default function ExpensePage() {
                   <p className="text-xs text-gray-400">{e.date}{e.paidBy ? ` ｜ 支払: ${e.paidBy}` : ''}</p>
                 </div>
                 <span className="text-sm font-semibold text-gray-700 shrink-0">¥{e.amount.toLocaleString()}</span>
-                <div className="flex gap-1 shrink-0">
-                  <button onClick={() => { setEditing(e); setForm({ date: e.date, category: e.category, description: e.description, amount: e.amount, paidBy: e.paidBy, eventId: e.eventId }); setShowForm(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
-                    <Pencil size={14} />
-                  </button>
-                  <button onClick={() => handleDelete(e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {/* 編集ボタンは認証済みのみ表示 */}
+                {isUnlocked && (
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => { setEditing(e); setForm({ date: e.date, category: e.category, description: e.description, amount: e.amount, paidBy: e.paidBy, eventId: e.eventId }); setShowForm(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDelete(e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* パスワード入力モーダル */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lock size={18} className="text-gray-600" />
+                <h2 className="font-bold text-gray-800">編集モードに入る</h2>
+              </div>
+              <button onClick={() => setShowPasswordModal(false)}><X size={20} /></button>
+            </div>
+            <p className="text-xs text-gray-500">パスワードを入力してください（設定画面で変更可）</p>
+            <div className="relative">
+              <input
+                type={showPasswordInput ? 'text' : 'password'}
+                placeholder="パスワード"
+                value={passwordInput}
+                onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
+                autoFocus
+                className="w-full border rounded-lg px-3 py-2 text-sm pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasswordInput(!showPasswordInput)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showPasswordInput ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {passwordError && <p className="text-xs text-red-500">{passwordError}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => setShowPasswordModal(false)} className="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm">キャンセル</button>
+              <button onClick={handleUnlock} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm hover:bg-green-700">
+                解除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Form Modal */}
       {showForm && (

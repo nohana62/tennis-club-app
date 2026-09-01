@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Save, Send, CheckCircle, AlertTriangle, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { Save, Send, CheckCircle, AlertTriangle, ExternalLink, Eye, EyeOff, Lock } from 'lucide-react';
 import { loadSettings, saveSettings } from '../../services/notificationSettings';
 import { sendTeamsMessage } from '../../services/teams';
 import { sendLineMessage } from '../../services/line';
+import { getExpensePassword, setExpensePassword, checkExpensePassword } from '../../services/expensePassword';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(loadSettings);
@@ -10,6 +11,32 @@ export default function SettingsPage() {
   const [showLineToken, setShowLineToken] = useState(false);
   const [teamsTestState, setTeamsTestState] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [lineTestState, setLineTestState] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
+
+  // パスワード変更
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [pwMessage, setPwMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+  function handleChangePassword() {
+    if (!checkExpensePassword(pwCurrent)) {
+      setPwMessage({ type: 'error', text: '現在のパスワードが違います' });
+      return;
+    }
+    if (pwNew.length < 4) {
+      setPwMessage({ type: 'error', text: 'パスワードは4文字以上にしてください' });
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwMessage({ type: 'error', text: '新しいパスワードが一致しません' });
+      return;
+    }
+    setExpensePassword(pwNew);
+    setPwCurrent(''); setPwNew(''); setPwConfirm('');
+    setPwMessage({ type: 'ok', text: 'パスワードを変更しました' });
+    setTimeout(() => setPwMessage(null), 3000);
+  }
 
   function handleSave() {
     saveSettings(settings);
@@ -213,6 +240,56 @@ export default function SettingsPage() {
             {lineTestState === 'sending' ? '送信中...' : 'テスト送信（プロキシ必要）'}
           </button>
           <TestResult state={lineTestState} />
+        </div>
+      </section>
+
+      {/* ── 経費パスワード変更 ── */}
+      <section className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
+            <Lock size={18} className="text-gray-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-800">経費編集パスワード</h2>
+            <p className="text-xs text-gray-500">経費ページの編集モードに入るためのパスワード（初期値: tennis123）</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {(['現在のパスワード', '新しいパスワード', '新しいパスワード（確認）'] as const).map((label, i) => {
+            const val = [pwCurrent, pwNew, pwConfirm][i];
+            const setter = [setPwCurrent, setPwNew, setPwConfirm][i];
+            return (
+              <div key={label}>
+                <label className="text-xs text-gray-500 mb-1 block">{label}</label>
+                <div className="relative">
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={val}
+                    onChange={(e) => { setter(e.target.value); setPwMessage(null); }}
+                    className="w-full border rounded-lg px-3 py-2 text-sm pr-10"
+                    placeholder="••••••••"
+                  />
+                  {i === 0 && (
+                    <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {pwMessage && (
+            <p className={`text-xs flex items-center gap-1 ${pwMessage.type === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
+              {pwMessage.type === 'ok' ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+              {pwMessage.text}
+            </p>
+          )}
+          <button
+            onClick={handleChangePassword}
+            className="flex items-center gap-2 text-sm px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition"
+          >
+            <Lock size={14} /> パスワードを変更
+          </button>
         </div>
       </section>
 
