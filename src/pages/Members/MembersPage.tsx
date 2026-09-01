@@ -14,18 +14,21 @@ const EMPTY_MEMBER: Omit<Member, 'id'> = {
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   attending: '参加',
   absent: '欠席',
+  hold: '保留',
   pending: '未回答',
 };
 
 const STATUS_ICON: Record<AttendanceStatus, React.ReactNode> = {
   attending: <UserCheck size={14} />,
   absent: <UserX size={14} />,
+  hold: <Clock size={12} />,
   pending: <Clock size={14} />,
 };
 
 const STATUS_COLOR: Record<AttendanceStatus, string> = {
   attending: 'bg-green-100 text-green-700',
   absent: 'bg-red-100 text-red-700',
+  hold: 'bg-yellow-100 text-yellow-700',
   pending: 'bg-gray-100 text-gray-500',
 };
 
@@ -136,15 +139,17 @@ export default function MembersPage() {
   const getStatus = (memberId: string): AttendanceStatus =>
     attendanceForEvent.find(a => a.memberId === memberId)?.status ?? 'pending';
 
-  // 未回答 = 全部員数 - 参加数 - 欠席数（レコードなし部員も未回答扱い）
+  // 未回答 = 全部員数 - 参加数 - 欠席数 - 保留数（レコードなし部員も未回答扱い）
   const attendingCount = members.filter(m => getStatus(m.id!) === 'attending').length;
   const absentCount = members.filter(m => getStatus(m.id!) === 'absent').length;
-  const pendingCount = members.length - attendingCount - absentCount;
+  const holdCount = members.filter(m => getStatus(m.id!) === 'hold').length;
+  const pendingCount = members.length - attendingCount - absentCount - holdCount;
   const attendRate = members.length ? Math.round((attendingCount / members.length) * 100) : 0;
 
   const statCounts: Record<AttendanceStatus, number> = {
     attending: attendingCount,
     absent: absentCount,
+    hold: holdCount,
     pending: pendingCount,
   };
 
@@ -242,9 +247,9 @@ export default function MembersPage() {
                 </select>
               </div>
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {(['attending', 'absent', 'pending'] as AttendanceStatus[]).map((s) => (
-                  <div key={s} className={`rounded-xl p-3 text-center ${STATUS_COLOR[s]}`}>
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                {(['attending', 'absent', 'hold', 'pending'] as AttendanceStatus[]).map((s) => (
+                  <div key={s} className={`rounded-xl p-2 text-center ${STATUS_COLOR[s]}`}>
                     <div className="text-xl font-bold">{statCounts[s]}</div>
                     <div className="text-xs">{STATUS_LABEL[s]}</div>
                   </div>
@@ -260,8 +265,8 @@ export default function MembersPage() {
                         {m.name.slice(0, 1)}
                       </div>
                       <div className="flex-1 text-sm font-medium text-gray-800">{m.name}</div>
-                      <div className="flex gap-1">
-                        {(['attending', 'absent', 'pending'] as AttendanceStatus[]).map((s) => (
+                      <div className="flex gap-1 flex-wrap justify-end">
+                        {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
                           <button
                             key={s}
                             onClick={() => handleAttendance(m.id!, m.name, s)}
@@ -270,6 +275,13 @@ export default function MembersPage() {
                             {STATUS_ICON[s]} {STATUS_LABEL[s]}
                           </button>
                         ))}
+                        {/* 保留：小さめ */}
+                        <button
+                          onClick={() => handleAttendance(m.id!, m.name, 'hold')}
+                          className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] transition ${status === 'hold' ? STATUS_COLOR['hold'] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                        >
+                          {STATUS_ICON['hold']} {STATUS_LABEL['hold']}
+                        </button>
                       </div>
                     </div>
                   );

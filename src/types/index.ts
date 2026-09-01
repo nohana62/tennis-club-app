@@ -27,7 +27,7 @@ export interface Member {
   joinedAt?: string;
 }
 
-export type AttendanceStatus = 'attending' | 'absent' | 'pending';
+export type AttendanceStatus = 'attending' | 'absent' | 'hold' | 'pending';
 
 export interface Attendance {
   id?: string;
