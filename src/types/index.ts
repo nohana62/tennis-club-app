@@ -51,3 +51,11 @@ export interface Expense {
   paidBy: string;
   createdAt?: string;
 }
+
+export interface Post {
+  id?: string;
+  authorName: string;
+  content: string;
+  important: boolean;
+  createdAt?: string;
+}

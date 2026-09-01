@@ -14,7 +14,7 @@ import {
   Timestamp,
   type Firestore,
 } from 'firebase/firestore';
-import type { ClubEvent, Member, Attendance, Expense } from '../types';
+import type { ClubEvent, Member, Attendance, Expense, Post } from '../types';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -162,4 +162,24 @@ export async function getAppConfig(): Promise<AppConfig> {
 export async function saveAppConfig(data: Partial<AppConfig>): Promise<void> {
   const ref = doc(db, 'settings', CONFIG_DOC);
   await setDoc(ref, data, { merge: true });
+}
+
+// ── Posts (掲示板) ──────────────────────────────────
+
+export async function getPosts(): Promise<Post[]> {
+  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
+}
+
+export async function addPost(post: Omit<Post, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(db, 'posts'), {
+    ...post,
+    createdAt: Timestamp.now().toDate().toISOString(),
+  });
+  return ref.id;
+}
+
+export async function deletePost(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'posts', id));
 }

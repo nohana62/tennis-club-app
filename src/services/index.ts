@@ -2,7 +2,7 @@
  * データサービスのエントリーポイント
  * VITE_DEMO_MODE=true またはFirebase未設定 の場合はモックデータを使用
  */
-import type { ClubEvent, Member, Attendance, Expense } from "../types";
+import type { ClubEvent, Member, Attendance, Expense, Post } from "../types";
 import type { AppConfig } from "./firebase";
 
 import * as mock from "./mockFirebase";
@@ -37,3 +37,7 @@ export const deleteExpense = (id: string): Promise<void>                      =>
 export type { AppConfig };
 export const getAppConfig  = (): Promise<AppConfig>              => svc.getAppConfig();
 export const saveAppConfig = (d: Partial<AppConfig>): Promise<void> => svc.saveAppConfig(d);
+
+export const getPosts    = (): Promise<Post[]>                    => svc.getPosts();
+export const addPost     = (p: Omit<Post, 'id'>): Promise<string> => svc.addPost(p);
+export const deletePost  = (id: string): Promise<void>            => svc.deletePost(id);

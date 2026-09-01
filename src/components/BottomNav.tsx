@@ -1,12 +1,13 @@
 ﻿import { NavLink } from "react-router-dom";
-import { Calendar, Users, DollarSign, FileText, Settings } from "lucide-react";
+import { Calendar, Users, DollarSign, FileText, Settings, MessageSquare } from "lucide-react";
 
 const navItems = [
-  { to: "/",        label: "スケジュール", icon: Calendar   },
-  { to: "/members", label: "参加者",       icon: Users      },
-  { to: "/expense", label: "経費",         icon: DollarSign },
-  { to: "/report",  label: "報告書",       icon: FileText   },
-  { to: "/settings",label: "設定",         icon: Settings   },
+  { to: "/",        label: "スケジュール", icon: Calendar      },
+  { to: "/members", label: "参加者",       icon: Users         },
+  { to: "/board",   label: "掲示板",       icon: MessageSquare },
+  { to: "/expense", label: "経費",         icon: DollarSign    },
+  { to: "/report",  label: "報告書",       icon: FileText      },
+  { to: "/settings",label: "設定",         icon: Settings      },
 ];
 
 export default function BottomNav() {

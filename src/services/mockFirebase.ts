@@ -4,7 +4,7 @@
  * データはページリロードでリセットされます。
  */
 import { MOCK_MEMBERS, MOCK_EVENTS, MOCK_ATTENDANCES, MOCK_EXPENSES } from './mockData';
-import type { ClubEvent, Member, Attendance, Expense } from '../types';
+import type { ClubEvent, Member, Attendance, Expense, Post } from '../types';
 
 // メモリ内ストア（コピーして書き込み可能にする）
 let events: ClubEvent[] = structuredClone(MOCK_EVENTS);
@@ -122,4 +122,22 @@ export async function getAppConfig(): Promise<AppConfig> {
 export async function saveAppConfig(data: Partial<AppConfig>): Promise<void> {
   const current = await getAppConfig();
   localStorage.setItem(LS_CONFIG_KEY, JSON.stringify({ ...current, ...data }));
+}
+
+// ── Posts (掲示板) ──────────────────────────────────
+
+let posts: Post[] = [];
+
+export async function getPosts(): Promise<Post[]> {
+  return [...posts].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+}
+
+export async function addPost(post: Omit<Post, 'id'>): Promise<string> {
+  const id = genId();
+  posts.push({ ...post, id, createdAt: new Date().toISOString() });
+  return id;
+}
+
+export async function deletePost(id: string): Promise<void> {
+  posts = posts.filter((p) => p.id !== id);
 }
