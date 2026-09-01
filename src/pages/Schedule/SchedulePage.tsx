@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from "react";
-import { Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Send, DollarSign, UserCheck, UserX, Users, CheckCircle } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Send, DollarSign, UserCheck, UserX, Users, CheckCircle, Clock } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameMonth, isSameDay, addMonths, subMonths, parseISO,
@@ -514,13 +514,17 @@ export default function SchedulePage() {
                     <div className={`text-xs px-3 py-2 rounded-lg flex items-center gap-2 ${
                       getMyStatus(detailEvent.id!) === "attending"
                         ? "bg-green-50 text-green-700 border border-green-200"
+                        : getMyStatus(detailEvent.id!) === "hold"
+                        ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
                         : "bg-red-50 text-red-700 border border-red-200"
                     }`}>
                       {getMyStatus(detailEvent.id!) === "attending"
                         ? <UserCheck size={14} />
+                        : getMyStatus(detailEvent.id!) === "hold"
+                        ? <Clock size={14} />
                         : <UserX size={14} />}
                       現在の回答: <strong>
-                        {getMyStatus(detailEvent.id!) === "attending" ? "参加" : "不参加"}
+                        {getMyStatus(detailEvent.id!) === "attending" ? "参加" : getMyStatus(detailEvent.id!) === "hold" ? "保留" : "不参加"}
                       </strong> — 変更する場合は下のボタンを押してください
                     </div>
                   )}
@@ -540,6 +544,13 @@ export default function SchedulePage() {
                       <UserX size={18} /> 不参加
                     </button>
                   </div>
+                  <button
+                    disabled={!myName.trim() || submitting}
+                    onClick={() => handleAttend("hold")}
+                    className="w-full flex items-center justify-center gap-1 bg-yellow-100 text-yellow-700 py-1.5 rounded-lg text-xs font-medium hover:bg-yellow-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    <Clock size={13} /> 保留（未定）
+                  </button>
                   {!myName.trim() && (
                     <p className="text-xs text-amber-600 text-center">名前を入力してください</p>
                   )}
@@ -680,6 +691,7 @@ export default function SchedulePage() {
 function AttendanceSummary({ attendances }: { attendances: Attendance[] }) {
   const attending = attendances.filter((a) => a.status === "attending");
   const absent    = attendances.filter((a) => a.status === "absent");
+  const hold      = attendances.filter((a) => a.status === "hold");
   if (attendances.length === 0) return (
     <div className="text-xs text-gray-400 flex items-center gap-1"><Users size={13} /> まだ回答がありません</div>
   );
@@ -692,6 +704,11 @@ function AttendanceSummary({ attendances }: { attendances: Attendance[] }) {
         <span className="flex items-center gap-1 text-red-600 font-medium">
           <UserX size={15} /> 不参加 {absent.length}人
         </span>
+        {hold.length > 0 && (
+          <span className="flex items-center gap-1 text-yellow-700 font-medium">
+            <Clock size={15} /> 保留 {hold.length}人
+          </span>
+        )}
       </div>
       {attending.length > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -713,12 +730,22 @@ function AttendanceSummary({ attendances }: { attendances: Attendance[] }) {
           ))}
         </div>
       )}
+      {hold.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {hold.map((a) => (
+            <span key={a.id} title={a.comment || undefined} className="text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+              {a.memberName}
+              {a.comment && <span className="text-yellow-500">💬</span>}
+            </span>
+          ))}
+        </div>
+      )}
       {/* コメント一覧 */}
-      {[...attending, ...absent].some(a => a.comment) && (
+      {[...attending, ...absent, ...hold].some(a => a.comment) && (
         <div className="mt-2 space-y-1">
-          {[...attending, ...absent].filter(a => a.comment).map((a) => (
+          {[...attending, ...absent, ...hold].filter(a => a.comment).map((a) => (
             <div key={a.id} className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-1.5 flex gap-2">
-              <span className={`font-medium ${a.status === "attending" ? "text-green-700" : "text-red-600"}`}>{a.memberName}</span>
+              <span className={`font-medium ${a.status === "attending" ? "text-green-700" : a.status === "hold" ? "text-yellow-700" : "text-red-600"}`}>{a.memberName}</span>
               <span className="text-gray-400">：</span>
               <span>{a.comment}</span>
             </div>
@@ -732,10 +759,10 @@ function AttendanceSummary({ attendances }: { attendances: Attendance[] }) {
 function SubmittedView({ name, status, onReset }: { name: string; status: AttendanceStatus | null; onReset: () => void }) {
   return (
     <div className="text-center py-4 space-y-3">
-      <CheckCircle size={40} className={status === "attending" ? "text-green-500 mx-auto" : "text-red-400 mx-auto"} />
+      <CheckCircle size={40} className={status === "attending" ? "text-green-500 mx-auto" : status === "hold" ? "text-yellow-500 mx-auto" : "text-red-400 mx-auto"} />
       <p className="font-semibold text-gray-800">
-        {name} さん、<span className={status === "attending" ? "text-green-600" : "text-red-500"}>
-          {status === "attending" ? "参加" : "不参加"}
+        {name} さん、<span className={status === "attending" ? "text-green-600" : status === "hold" ? "text-yellow-600" : "text-red-500"}>
+          {status === "attending" ? "参加" : status === "hold" ? "保留" : "不参加"}
         </span> で登録しました！
       </p>
       <button onClick={onReset} className="text-xs text-gray-400 underline">変更する</button>
@@ -754,6 +781,7 @@ function EventCard({
 }) {
   const attending = attendances.filter((a) => a.status === "attending").length;
   const absent    = attendances.filter((a) => a.status === "absent").length;
+  const hold      = attendances.filter((a) => a.status === "hold").length;
   return (
     <div
       className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:border-green-300 transition cursor-pointer"
@@ -779,6 +807,7 @@ function EventCard({
           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
             <span className="text-green-600">✔ {attending}人参加</span>
             {absent > 0 && <span className="text-red-400">✘ {absent}人不参加</span>}
+            {hold > 0 && <span className="text-yellow-600">⏸ {hold}人保留</span>}
           </p>
         )}
       </div>
