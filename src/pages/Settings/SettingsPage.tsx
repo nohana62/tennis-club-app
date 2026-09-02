@@ -412,28 +412,36 @@ export default function SettingsPage() {
 
       {/* 部員追加・編集モーダル */}
       {showMemberForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-end md:items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-800">{editingMember ? '部員編集' : '部員追加'}</h2>
-              <button onClick={() => setShowMemberForm(false)}><X size={20} /></button>
-            </div>
-            <form onSubmit={handleMemberSubmit} className="space-y-3">
-              <input required type="text" placeholder="氏名" value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="text" placeholder="部署" value={memberForm.department} onChange={(e) => setMemberForm({ ...memberForm, department: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="email" placeholder="メールアドレス" value={memberForm.email} onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="tel" placeholder="電話番号" value={memberForm.phone} onChange={(e) => setMemberForm({ ...memberForm, phone: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <select value={memberForm.role} onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value as Member['role'] })} className="w-full border rounded-lg px-3 py-2 text-sm">
-                <option value="member">一般部員</option>
-                <option value="admin">管理者</option>
-              </select>
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowMemberForm(false)} className="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm">キャンセル</button>
-                <button type="submit" className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm hover:bg-green-700">
-                  {editingMember ? '更新' : '追加'}
-                </button>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 overflow-y-auto overscroll-contain"
+          onClick={() => setShowMemberForm(false)}
+        >
+          <div className="min-h-full flex items-start md:items-center justify-center p-4 py-8">
+            <div
+              className="bg-white rounded-xl w-full max-w-lg p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-gray-800">{editingMember ? '部員編集' : '部員追加'}</h2>
+                <button onClick={() => setShowMemberForm(false)}><X size={20} /></button>
               </div>
-            </form>
+              <form onSubmit={handleMemberSubmit} className="space-y-3">
+                <input required type="text" placeholder="氏名" value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <input type="text" placeholder="部署" value={memberForm.department} onChange={(e) => setMemberForm({ ...memberForm, department: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <input type="email" placeholder="メールアドレス" value={memberForm.email} onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <input type="tel" placeholder="電話番号" value={memberForm.phone} onChange={(e) => setMemberForm({ ...memberForm, phone: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <select value={memberForm.role} onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value as Member['role'] })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="member">一般部員</option>
+                  <option value="admin">管理者</option>
+                </select>
+                <div className="flex gap-2 pt-1">
+                  <button type="button" onClick={() => setShowMemberForm(false)} className="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm">キャンセル</button>
+                  <button type="submit" className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm hover:bg-green-700">
+                    {editingMember ? '更新' : '追加'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
