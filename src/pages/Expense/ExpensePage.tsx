@@ -38,7 +38,8 @@ export default function ExpensePage() {
   const [form, setForm] = useState<Omit<Expense, 'id'>>(EMPTY_EXPENSE);
   const [filterMode, setFilterMode] = useState<'month' | 'year'>('month');
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [filterYear, setFilterYear] = useState(format(new Date(), 'yyyy'));
+  const [filterYearFrom, setFilterYearFrom] = useState(format(new Date(), 'yyyy') + '-01');
+  const [filterYearTo, setFilterYearTo] = useState(format(new Date(), 'yyyy') + '-12');
 
   // 認証状態（セッション中のみ維持）
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -87,9 +88,11 @@ export default function ExpensePage() {
     }
   }
 
-  const filteredExpenses = expenses.filter((e) =>
-    filterMode === 'month' ? e.date.startsWith(filterMonth) : e.date.startsWith(filterYear)
-  );
+  const filteredExpenses = expenses.filter((e) => {
+    if (filterMode === 'month') return e.date.startsWith(filterMonth);
+    const ym = e.date.slice(0, 7); // yyyy-MM
+    return ym >= filterYearFrom && ym <= filterYearTo;
+  });
   const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   const byCategory = (Object.keys(CATEGORY_LABELS) as ExpenseCategory[]).map((cat) => ({
@@ -157,15 +160,21 @@ export default function ExpensePage() {
             className="border rounded-lg px-3 py-2 text-sm"
           />
         ) : (
-          <select
-            value={filterYear}
-            onChange={(e) => setFilterYear(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm"
-          >
-            {Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
-              <option key={y} value={y}>{y}年</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="month"
+              value={filterYearFrom}
+              onChange={(e) => setFilterYearFrom(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm"
+            />
+            <span className="text-sm text-gray-500">〜</span>
+            <input
+              type="month"
+              value={filterYearTo}
+              onChange={(e) => setFilterYearTo(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
         )}
       </div>
 
