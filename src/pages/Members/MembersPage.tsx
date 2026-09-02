@@ -46,7 +46,9 @@ export default function MembersPage() {
   const [editing, setEditing] = useState<Member | null>(null);
   const [form, setForm] = useState<Omit<Member, 'id'>>(EMPTY_MEMBER);
   const [selectedEvent, setSelectedEvent] = useState<string>('');
+  const [selectedMember, setSelectedMember] = useState<string>('');
   const [tab, setTab] = useState<'members' | 'attendance'>('members');
+  const [attendanceView, setAttendanceView] = useState<'byDate' | 'byMember'>('byDate');
 
   const dragIndex = useRef<number | null>(null);
   const dragOverIndex = useRef<number | null>(null);
@@ -59,6 +61,7 @@ export default function MembersPage() {
     setEvents(e);
     setAttendances(a);
     if (e.length > 0 && !selectedEvent) setSelectedEvent(e[0].id ?? '');
+    if (m.length > 0 && !selectedMember) setSelectedMember(m[0].id ?? '');
   }
 
   async function handleSubmit(ev: React.FormEvent) {
@@ -78,12 +81,12 @@ export default function MembersPage() {
     await load();
   }
 
-  async function handleAttendance(memberId: string, memberName: string, status: AttendanceStatus) {
-    const existing = attendances.find(a => a.eventId === selectedEvent && a.memberId === memberId);
+  async function handleAttendance(eventId: string, memberId: string, memberName: string, status: AttendanceStatus) {
+    const existing = attendances.find(a => a.eventId === eventId && a.memberId === memberId);
     if (existing?.id) {
       await updateAttendance(existing.id, { status });
     } else {
-      await setAttendance({ eventId: selectedEvent, memberId, memberName, status });
+      await setAttendance({ eventId, memberId, memberName, status });
     }
     const fresh = await getAttendances();
     setAttendances(fresh);
@@ -135,9 +138,8 @@ export default function MembersPage() {
     touchItemIndex.current = null;
   }
 
-  const attendanceForEvent = attendances.filter(a => a.eventId === selectedEvent);
-  const getStatus = (memberId: string): AttendanceStatus =>
-    attendanceForEvent.find(a => a.memberId === memberId)?.status ?? 'pending';
+  const getStatus = (memberId: string, eventId: string = selectedEvent): AttendanceStatus =>
+    attendances.find(a => a.eventId === eventId && a.memberId === memberId)?.status ?? 'pending';
 
   // 未回答 = 全部員数 - 参加数 - 欠席数 - 保留数（レコードなし部員も未回答扱い）
   const attendingCount = members.filter(m => getStatus(m.id!) === 'attending').length;
@@ -234,59 +236,125 @@ export default function MembersPage() {
             <p className="text-gray-400 text-sm">イベントがありません</p>
           ) : (
             <>
-              <div className="mb-3">
-                <label className="text-xs text-gray-500 mb-1 block">イベント選択</label>
-                <select
-                  value={selectedEvent}
-                  onChange={(e) => setSelectedEvent(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                >
-                  {events.map((ev) => (
-                    <option key={ev.id} value={ev.id}>{ev.date} {ev.title}</option>
-                  ))}
-                </select>
-              </div>
-              {/* Stats */}
-              <div className="grid grid-cols-4 gap-2 mb-4">
-                {(['attending', 'absent', 'hold', 'pending'] as AttendanceStatus[]).map((s) => (
-                  <div key={s} className={`rounded-xl p-2 text-center ${STATUS_COLOR[s]}`}>
-                    <div className="text-xl font-bold">{statCounts[s]}</div>
-                    <div className="text-xs">{STATUS_LABEL[s]}</div>
-                  </div>
+              {/* 表示モード切り替え */}
+              <div className="flex gap-1 mb-3 bg-gray-100 p-1 rounded-lg w-fit">
+                {(['byDate', 'byMember'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setAttendanceView(v)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${attendanceView === v ? 'bg-white shadow text-green-700' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {v === 'byDate' ? '日付ごと' : '名前ごと'}
+                  </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mb-3">参加率: {attendRate}%</p>
-              <div className="space-y-2">
-                {members.map((m) => {
-                  const status = getStatus(m.id!);
-                  return (
-                    <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm shrink-0">
-                        {m.name.slice(0, 1)}
+
+              {attendanceView === 'byDate' ? (
+                <>
+                  <div className="mb-3">
+                    <label className="text-xs text-gray-500 mb-1 block">イベント選択</label>
+                    <select
+                      value={selectedEvent}
+                      onChange={(e) => setSelectedEvent(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      {events.map((ev) => (
+                        <option key={ev.id} value={ev.id}>{ev.date} {ev.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Stats */}
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {(['attending', 'absent', 'hold', 'pending'] as AttendanceStatus[]).map((s) => (
+                      <div key={s} className={`rounded-xl p-2 text-center ${STATUS_COLOR[s]}`}>
+                        <div className="text-xl font-bold">{statCounts[s]}</div>
+                        <div className="text-xs">{STATUS_LABEL[s]}</div>
                       </div>
-                      <div className="flex-1 text-sm font-medium text-gray-800">{m.name}</div>
-                      <div className="flex gap-1 flex-wrap justify-end">
-                        {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
-                          <button
-                            key={s}
-                            onClick={() => handleAttendance(m.id!, m.name, s)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                          >
-                            {STATUS_ICON[s]} {STATUS_LABEL[s]}
-                          </button>
-                        ))}
-                        {/* 保留：小さめ */}
-                        <button
-                          onClick={() => handleAttendance(m.id!, m.name, 'hold')}
-                          className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] transition ${status === 'hold' ? STATUS_COLOR['hold'] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                        >
-                          {STATUS_ICON['hold']} {STATUS_LABEL['hold']}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">参加率: {attendRate}%</p>
+                  <div className="space-y-2">
+                    {members.map((m) => {
+                      const status = getStatus(m.id!);
+                      return (
+                        <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm shrink-0">
+                            {m.name.slice(0, 1)}
+                          </div>
+                          <div className="flex-1 text-sm font-medium text-gray-800">{m.name}</div>
+                          <div className="flex gap-1 flex-wrap justify-end">
+                            {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
+                              <button
+                                key={s}
+                                onClick={() => handleAttendance(selectedEvent, m.id!, m.name, s)}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                              >
+                                {STATUS_ICON[s]} {STATUS_LABEL[s]}
+                              </button>
+                            ))}
+                            {/* 保留：小さめ */}
+                            <button
+                              onClick={() => handleAttendance(selectedEvent, m.id!, m.name, 'hold')}
+                              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] transition ${status === 'hold' ? STATUS_COLOR['hold'] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                            >
+                              {STATUS_ICON['hold']} {STATUS_LABEL['hold']}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* 名前ごと：1人分をまとめて全日程分登録 */}
+                  <div className="mb-3">
+                    <label className="text-xs text-gray-500 mb-1 block">部員選択</label>
+                    <select
+                      value={selectedMember}
+                      onChange={(e) => setSelectedMember(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    {[...events].sort((a, b) => a.date.localeCompare(b.date)).map((ev) => {
+                      const status = getStatus(selectedMember, ev.id!);
+                      return (
+                        <div key={ev.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 flex-wrap">
+                          <div className="flex-1 min-w-[140px]">
+                            <p className="text-sm font-medium text-gray-800">{ev.title}</p>
+                            <p className="text-xs text-gray-400">
+                              {ev.date}{ev.location ? ` ｜ ${ev.location}` : ''}
+                              {ev.startTime ? ` ｜ ${ev.startTime}${ev.endTime ? `〜${ev.endTime}` : ''}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 flex-wrap justify-end">
+                            {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
+                              <button
+                                key={s}
+                                onClick={() => handleAttendance(ev.id!, selectedMember, members.find(m => m.id === selectedMember)?.name ?? '', s)}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                              >
+                                {STATUS_ICON[s]} {STATUS_LABEL[s]}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => handleAttendance(ev.id!, selectedMember, members.find(m => m.id === selectedMember)?.name ?? '', 'hold')}
+                              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] transition ${status === 'hold' ? STATUS_COLOR['hold'] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                            >
+                              {STATUS_ICON['hold']} {STATUS_LABEL['hold']}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
