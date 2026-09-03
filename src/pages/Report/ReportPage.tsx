@@ -26,6 +26,16 @@ export default function ReportPage() {
   const [reportMonth, setReportMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(true);
+  const [excludedExpenseIds, setExcludedExpenseIds] = useState<Set<string>>(new Set());
+
+  function toggleExpenseInclude(id?: string) {
+    if (!id) return;
+    setExcludedExpenseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     (async () => {
@@ -40,13 +50,15 @@ export default function ReportPage() {
   const prefix = mode === 'monthly' ? reportMonth : reportYear;
   const filteredEvents = events.filter(e => e.date.startsWith(prefix));
   const filteredExpenses = expenses.filter(e => e.date.startsWith(prefix));
-  const totalExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
+  // 報告書に含める経費（チェックを外した項目は除外）
+  const reportExpenses = filteredExpenses.filter(e => !e.id || !excludedExpenseIds.has(e.id));
+  const totalExpense = reportExpenses.reduce((s, e) => s + e.amount, 0);
 
   // 年間: 月別集計
   const monthlyStats = mode === 'yearly' ? MONTHS.map(m => {
     const ym = `${reportYear}-${m}`;
     const evs = events.filter(e => e.date.startsWith(ym));
-    const exs = expenses.filter(e => e.date.startsWith(ym));
+    const exs = expenses.filter(e => e.date.startsWith(ym) && (!e.id || !excludedExpenseIds.has(e.id)));
     return { month: `${parseInt(m)}月`, events: evs.length, expense: exs.reduce((s, e) => s + e.amount, 0) };
   }) : [];
 
@@ -82,7 +94,7 @@ export default function ReportPage() {
         <td>${a.total > 0 ? Math.round((a.attending / a.total) * 100) + '%' : '-'}</td>
       </tr>`).join('');
 
-    const expRows = filteredExpenses.map(e => `
+    const expRows = reportExpenses.map(e => `
       <tr>
         <td>${e.date}</td><td>${CATEGORY_LABELS[e.category] ?? e.category}</td>
         <td>${e.description}</td><td>¥${e.amount.toLocaleString()}</td><td>${e.paidBy}</td>
@@ -273,13 +285,13 @@ ${yearlySection}
     // ── 3. 経費明細
     addSectionHeader('3. 経費明細');
     addTableHeader(['日付', 'カテゴリ', '内容', '金額', '支払者']);
-    if (filteredExpenses.length === 0) {
+    if (reportExpenses.length === 0) {
       const r = ws.addRow(['データなし', '', '', '', '']);
       ws.mergeCells(`A${r.number}:E${r.number}`);
       r.getCell(1).font = { size: 9, color: { argb: 'FF999999' } };
       r.getCell(1).alignment = { horizontal: 'center' };
     } else {
-      filteredExpenses.forEach((e, i) => {
+      reportExpenses.forEach((e, i) => {
         const r = addDataRow([e.date, CATEGORY_LABELS[e.category] ?? e.category, e.description, `¥${e.amount.toLocaleString()}`, e.paidBy], i % 2 === 1);
         r.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
         r.getCell(4).alignment = { horizontal: 'right', vertical: 'middle' };
@@ -425,25 +437,38 @@ ${yearlySection}
         {/* 経費明細 */}
         <section>
           <h3 className="font-semibold text-gray-700 mb-2 text-sm border-l-4 border-green-600 pl-2">3. 経費明細</h3>
+          <p className="text-xs text-gray-400 mb-2">チェックを外すと、その項目は報告書（PDF/Excel/合計）から除外されます。</p>
           {filteredExpenses.length === 0 ? <p className="text-gray-400 text-sm">データなし</p> : (
             <table className="w-full text-xs border-collapse mb-2">
               <thead><tr className="bg-green-50">
+                <th className="text-center p-2 border border-gray-100 w-10">含</th>
                 <th className="text-left p-2 border border-gray-100">日付</th>
                 <th className="text-left p-2 border border-gray-100">カテゴリ</th>
                 <th className="text-left p-2 border border-gray-100">内容</th>
                 <th className="text-right p-2 border border-gray-100">金額</th>
               </tr></thead>
               <tbody>
-                {filteredExpenses.map((e) => (
-                  <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="p-2 border border-gray-100">{e.date}</td>
-                    <td className="p-2 border border-gray-100">{CATEGORY_LABELS[e.category]}</td>
-                    <td className="p-2 border border-gray-100">{e.description}</td>
-                    <td className="p-2 border border-gray-100 text-right">¥{e.amount.toLocaleString()}</td>
-                  </tr>
-                ))}
+                {filteredExpenses.map((e) => {
+                  const excluded = !!e.id && excludedExpenseIds.has(e.id);
+                  return (
+                    <tr key={e.id} className={`hover:bg-gray-50 ${excluded ? 'opacity-40' : ''}`}>
+                      <td className="p-2 border border-gray-100 text-center">
+                        <input
+                          type="checkbox"
+                          checked={!excluded}
+                          onChange={() => toggleExpenseInclude(e.id)}
+                          className="w-4 h-4 accent-green-600"
+                        />
+                      </td>
+                      <td className={`p-2 border border-gray-100 ${excluded ? 'line-through' : ''}`}>{e.date}</td>
+                      <td className={`p-2 border border-gray-100 ${excluded ? 'line-through' : ''}`}>{CATEGORY_LABELS[e.category]}</td>
+                      <td className={`p-2 border border-gray-100 ${excluded ? 'line-through' : ''}`}>{e.description}</td>
+                      <td className={`p-2 border border-gray-100 text-right ${excluded ? 'line-through' : ''}`}>¥{e.amount.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
                 <tr className="bg-green-50 font-bold">
-                  <td colSpan={3} className="p-2 border border-gray-100 text-right">合計</td>
+                  <td colSpan={4} className="p-2 border border-gray-100 text-right">報告書合計</td>
                   <td className="p-2 border border-gray-100 text-right text-green-700">¥{totalExpense.toLocaleString()}</td>
                 </tr>
               </tbody>
