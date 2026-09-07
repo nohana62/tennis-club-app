@@ -2,6 +2,7 @@
 import { UserCheck, UserX, Clock } from 'lucide-react';
 import { getMembers, getAttendances, setAttendance, updateAttendance, getEvents } from '../../services/index';
 import type { Member, Attendance, AttendanceStatus, ClubEvent } from '../../types';
+import { findAttendanceForMember } from '../../utils/attendance';
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   attending: '参加',
@@ -41,9 +42,10 @@ export default function MembersPage() {
   }
 
   async function handleAttendance(eventId: string, memberId: string, memberName: string, status: AttendanceStatus) {
-    const existing = attendances.find(a => a.eventId === eventId && a.memberId === memberId);
+    const member = { id: memberId, name: memberName };
+    const existing = findAttendanceForMember(attendances, eventId, member);
     if (existing?.id) {
-      await updateAttendance(existing.id, { status });
+      await updateAttendance(existing.id, { status, memberId, memberName });
     } else {
       await setAttendance({ eventId, memberId, memberName, status });
     }
@@ -51,8 +53,11 @@ export default function MembersPage() {
     setAttendances(fresh);
   }
 
-  const getStatus = (memberId: string, eventId: string = selectedEvent): AttendanceStatus =>
-    attendances.find(a => a.eventId === eventId && a.memberId === memberId)?.status ?? 'pending';
+  const getStatus = (memberId: string, eventId: string = selectedEvent): AttendanceStatus => {
+    const member = members.find(m => m.id === memberId);
+    if (!member) return 'pending';
+    return findAttendanceForMember(attendances, eventId, member)?.status ?? 'pending';
+  };
 
   // 未回答 = 全部員数 - 参加数 - 欠席数（レコードなし部員も未回答扱い）
   const attendingCount = members.filter(m => getStatus(m.id!) === 'attending').length;

@@ -5,6 +5,7 @@ import type { ClubEvent, Member, Attendance, Expense } from '../../types';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import ExcelJS from 'exceljs';
+import { findAttendanceForMember } from '../../utils/attendance';
 
 const CATEGORY_LABELS: Record<string, string> = {
   court: 'コート代', ball: 'ボール代', equipment: '用具・備品',
@@ -65,8 +66,9 @@ export default function ReportPage() {
   // 参加率サマリー
   const attendanceSummary = members.map((m) => {
     const targetEventIds = filteredEvents.map(e => e.id!);
-    const memberAtts = attendances.filter(a => a.memberId === m.id && targetEventIds.includes(a.eventId));
-    const attending = memberAtts.filter(a => a.status === 'attending').length;
+    const attending = targetEventIds.filter(
+      eventId => findAttendanceForMember(attendances, eventId, m)?.status === 'attending',
+    ).length;
     return { name: m.name, department: m.department, attending, total: filteredEvents.length };
   });
 

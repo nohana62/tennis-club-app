@@ -14,6 +14,7 @@ import {
 import { sendLineMessage, buildEventMessage } from "../../services/line";
 import { sendTeamsMessage, buildEventCard } from "../../services/teams";
 import type { ClubEvent, ExpenseCategory, Attendance, AttendanceStatus, Member } from "../../types";
+import { findAttendanceForMember } from "../../utils/attendance";
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   practice: "練習", match: "試合", other: "その他",
@@ -118,16 +119,23 @@ export default function SchedulePage() {
     try {
       localStorage.setItem(SAVED_NAME_KEY, myName.trim());
       const comment = myComment.trim();
-      const existing = attendances.find(
-        (a) => a.eventId === detailEvent.id && a.memberName === myName.trim()
-      );
+      const selectedMember = members.find((member) => member.name.trim() === myName.trim());
+      const memberName = selectedMember?.name ?? myName.trim();
+      const memberId = selectedMember?.id ?? "";
+      const existing = selectedMember
+        ? findAttendanceForMember(attendances, detailEvent.id, selectedMember)
+        : attendances.find(
+          (attendance) => attendance.eventId === detailEvent.id
+            && !attendance.memberId
+            && attendance.memberName.trim() === memberName,
+        );
       if (existing?.id) {
-        await updateAttendance(existing.id, { status, comment });
+        await updateAttendance(existing.id, { status, comment, memberId, memberName });
       } else {
         await setAttendance({
           eventId: detailEvent.id,
-          memberId: "",
-          memberName: myName.trim(),
+          memberId,
+          memberName,
           status,
           comment,
         });
@@ -149,9 +157,15 @@ export default function SchedulePage() {
 
   function getMyStatus(eventId: string): AttendanceStatus | null {
     if (!myName.trim()) return null;
-    return attendances.find(
-      (a) => a.eventId === eventId && a.memberName === myName.trim()
-    )?.status ?? null;
+    const selectedMember = members.find((member) => member.name.trim() === myName.trim());
+    const attendance = selectedMember
+      ? findAttendanceForMember(attendances, eventId, selectedMember)
+      : attendances.find(
+        (item) => item.eventId === eventId
+          && !item.memberId
+          && item.memberName.trim() === myName.trim(),
+      );
+    return attendance?.status ?? null;
   }
 
   // ── 管理（追加・編集・削除） ───────────────────
