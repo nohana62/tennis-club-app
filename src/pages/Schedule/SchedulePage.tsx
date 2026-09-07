@@ -47,6 +47,8 @@ export default function SchedulePage() {
   const [popup, setPopup] = useState<PopupState>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
+  const memberSelectRef = useRef<HTMLSelectElement>(null);
+  const memberInputRef = useRef<HTMLInputElement>(null);
   // 参加登録パネル
   const [detailEvent, setDetailEvent] = useState<ClubEvent | null>(null);
   const [myName, setMyName] = useState(() => localStorage.getItem(SAVED_NAME_KEY) ?? "");
@@ -54,6 +56,7 @@ export default function SchedulePage() {
   const [nameMode, setNameMode] = useState<"select" | "input">("select");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
   // 管理フォーム
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
@@ -96,30 +99,47 @@ export default function SchedulePage() {
     setDetailEvent(event);
     setSubmitted(false);
     setMyComment("");
+    setAttendanceError("");
+    setNameMode(myName.trim() && !members.some((member) => member.name === myName.trim()) ? "input" : "select");
   }
 
   async function handleAttend(status: AttendanceStatus) {
-    if (!detailEvent?.id || !myName.trim()) return;
-    setSubmitting(true);
-    localStorage.setItem(SAVED_NAME_KEY, myName.trim());
-    const existing = attendances.find(
-      (a) => a.eventId === detailEvent.id && a.memberName === myName.trim()
-    );
-    if (existing?.id) {
-      await updateAttendance(existing.id, { status, comment: myComment.trim() || undefined });
-    } else {
-      await setAttendance({
-        eventId: detailEvent.id,
-        memberId: "",
-        memberName: myName.trim(),
-        status,
-        comment: myComment.trim() || undefined,
+    if (!detailEvent?.id) return;
+    if (!myName.trim()) {
+      setAttendanceError("名前を選択または入力してください。");
+      requestAnimationFrame(() => {
+        (nameMode === "select" ? memberSelectRef.current : memberInputRef.current)?.focus();
       });
+      return;
     }
-    const fresh = await getAttendances();
-    setAttendances(fresh);
-    setSubmitting(false);
-    setSubmitted(true);
+
+    setAttendanceError("");
+    setSubmitting(true);
+    try {
+      localStorage.setItem(SAVED_NAME_KEY, myName.trim());
+      const existing = attendances.find(
+        (a) => a.eventId === detailEvent.id && a.memberName === myName.trim()
+      );
+      if (existing?.id) {
+        await updateAttendance(existing.id, { status, comment: myComment.trim() || undefined });
+      } else {
+        await setAttendance({
+          eventId: detailEvent.id,
+          memberId: "",
+          memberName: myName.trim(),
+          status,
+          comment: myComment.trim() || undefined,
+        });
+      }
+      const fresh = await getAttendances();
+      setAttendances(fresh);
+      setSubmitted(true);
+    } catch (error) {
+      console.error("参加登録に失敗しました", error);
+      setAttendanceError("登録できませんでした。通信状態を確認して、もう一度お試しください。");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function getEventAttendances(eventId: string) {
@@ -410,8 +430,15 @@ export default function SchedulePage() {
 
       {/* ── 参加登録パネル（モーダル） ── */}
       {detailEvent && (
-        <div className="fixed inset-0 bg-black/40 flex items-end md:items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/40 z-[60] overflow-y-auto overscroll-contain"
+          onClick={() => setDetailEvent(null)}
+        >
+          <div className="min-h-full flex items-start md:items-center justify-center p-4 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8">
+            <div
+              className="bg-white rounded-xl w-full max-w-lg p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
             {/* ヘッダー */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1 min-w-0 pr-3">
@@ -460,13 +487,19 @@ export default function SchedulePage() {
                     <label className="text-xs text-gray-500 mb-1 block">お名前</label>
                     <div className="flex gap-2 mb-1">
                       <button
-                        onClick={() => setNameMode("select")}
+                        type="button"
+                        onClick={() => {
+                          setNameMode("select");
+                          if (!members.some((member) => member.name === myName.trim())) setMyName("");
+                          setAttendanceError("");
+                        }}
                         className={`text-xs px-2.5 py-1 rounded-full border transition ${nameMode === "select" ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-500 border-gray-300 hover:border-green-400"}`}
                       >
                         リストから選択
                       </button>
                       <button
-                        onClick={() => setNameMode("input")}
+                        type="button"
+                        onClick={() => { setNameMode("input"); setAttendanceError(""); }}
                         className={`text-xs px-2.5 py-1 rounded-full border transition ${nameMode === "input" ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-500 border-gray-300 hover:border-green-400"}`}
                       >
                         直接入力
@@ -474,9 +507,10 @@ export default function SchedulePage() {
                     </div>
                     {nameMode === "select" ? (
                       <select
+                        ref={memberSelectRef}
                         value={myName}
-                        onChange={(e) => setMyName(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                        onChange={(e) => { setMyName(e.target.value); setAttendanceError(""); }}
+                        className={`w-full border rounded-lg px-3 py-2 text-sm bg-white ${attendanceError && !myName.trim() ? "border-red-400 ring-2 ring-red-100" : ""}`}
                       >
                         <option value="">— 名前を選択 —</option>
                         {members.map((m) => (
@@ -485,16 +519,20 @@ export default function SchedulePage() {
                       </select>
                     ) : (
                       <input
+                        ref={memberInputRef}
                         type="text"
                         placeholder="例: 田中 一郎"
                         value={myName}
-                        onChange={(e) => setMyName(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        onChange={(e) => { setMyName(e.target.value); setAttendanceError(""); }}
+                        className={`w-full border rounded-lg px-3 py-2 text-sm ${attendanceError && !myName.trim() ? "border-red-400 ring-2 ring-red-100" : ""}`}
                         autoComplete="name"
                       />
                     )}
                     {myName.trim() && nameMode === "input" && (
                       <p className="text-xs text-gray-400 mt-1">次回から自動入力されます</p>
+                    )}
+                    {attendanceError && (
+                      <p className="text-xs text-red-600 mt-1" role="alert">{attendanceError}</p>
                     )}
                   </div>
                   {/* コメント欄 */}
@@ -526,23 +564,22 @@ export default function SchedulePage() {
                   )}
                   <div className="grid grid-cols-2 gap-3">
                     <button
-                      disabled={!myName.trim() || submitting}
+                      type="button"
+                      disabled={submitting}
                       onClick={() => handleAttend("attending")}
-                      className="flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      className="flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
                     >
-                      <UserCheck size={18} /> 参加する
+                      <UserCheck size={18} /> {submitting ? "登録中..." : "参加する"}
                     </button>
                     <button
-                      disabled={!myName.trim() || submitting}
+                      type="button"
+                      disabled={submitting}
                       onClick={() => handleAttend("absent")}
-                      className="flex items-center justify-center gap-2 bg-red-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      className="flex items-center justify-center gap-2 bg-red-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
                     >
-                      <UserX size={18} /> 不参加
+                      <UserX size={18} /> {submitting ? "登録中..." : "不参加"}
                     </button>
                   </div>
-                  {!myName.trim() && (
-                    <p className="text-xs text-amber-600 text-center">名前を入力してください</p>
-                  )}
                 </div>
               )}
             </div>
@@ -562,6 +599,7 @@ export default function SchedulePage() {
                 <Trash2 size={13} /> 削除
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}
