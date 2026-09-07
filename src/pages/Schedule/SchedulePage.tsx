@@ -117,18 +117,19 @@ export default function SchedulePage() {
     setSubmitting(true);
     try {
       localStorage.setItem(SAVED_NAME_KEY, myName.trim());
+      const comment = myComment.trim();
       const existing = attendances.find(
         (a) => a.eventId === detailEvent.id && a.memberName === myName.trim()
       );
       if (existing?.id) {
-        await updateAttendance(existing.id, { status, comment: myComment.trim() || undefined });
+        await updateAttendance(existing.id, { status, comment });
       } else {
         await setAttendance({
           eventId: detailEvent.id,
           memberId: "",
           memberName: myName.trim(),
           status,
-          comment: myComment.trim() || undefined,
+          comment,
         });
       }
       const fresh = await getAttendances();
