@@ -1,9 +1,10 @@
 ﻿import { NavLink } from "react-router-dom";
-import { Calendar, Users, DollarSign, FileText, Settings, MessageSquare } from "lucide-react";
+import { Calendar, Users, DollarSign, FileText, Settings, MessageSquare, Shuffle } from "lucide-react";
 
 const navItems = [
   { to: "/",        label: "スケジュール管理", icon: Calendar      },
   { to: "/members", label: "参加者管理",       icon: Users         },
+  { to: "/doubles", label: "組み合わせ",       icon: Shuffle       },
   { to: "/board",   label: "掲示板",           icon: MessageSquare },
   { to: "/expense", label: "経費計算",         icon: DollarSign    },
   { to: "/report",  label: "報告書作成",       icon: FileText      },
