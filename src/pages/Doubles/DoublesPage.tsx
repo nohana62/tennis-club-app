@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Shuffle, Trash2, UserCheck } from 'lucide-react';
+import { format } from 'date-fns';
 import { getAttendances, getEvents, getMembers } from '../../services';
 import type { Attendance, ClubEvent, Member } from '../../types';
 import {
@@ -54,7 +55,7 @@ export default function DoublesPage() {
           getAttendances(),
         ]);
         const sortedEvents = [...eventData].sort((a, b) => a.date.localeCompare(b.date));
-        const today = new Date().toISOString().slice(0, 10);
+        const today = format(new Date(), 'yyyy-MM-dd');
         const initialEvent = sortedEvents.find((event) => event.date >= today)
           ?? sortedEvents.at(-1);
         setEvents(sortedEvents);
