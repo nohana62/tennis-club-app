@@ -274,7 +274,7 @@ export default function SchedulePage() {
         </div>
         <div className="grid grid-cols-7">
           {Array.from({ length: days[0].getDay() }).map((_, i) => (
-            <div key={`empty-${i}`} className="h-24 md:h-32" />
+            <div key={`empty-${i}`} className="h-36 md:h-32" />
           ))}
           {days.map((day) => {
             const dayEvents = eventsForDate(day);
@@ -283,7 +283,7 @@ export default function SchedulePage() {
               <button
                 key={day.toISOString()}
                 onClick={(e) => openPopup(day, e)}
-                className={`h-24 md:h-32 border-b border-r border-gray-50 p-1 text-left transition-colors align-top ${
+                className={`h-36 md:h-32 border-b border-r border-gray-50 px-0.5 py-1 md:p-1 text-left transition-colors align-top overflow-hidden ${
                   popup && isSameDay(day, popup.date) ? "bg-green-50" : "hover:bg-gray-50"
                 } ${!isSameMonth(day, currentMonth) ? "opacity-40" : ""}`}
               >
@@ -292,19 +292,43 @@ export default function SchedulePage() {
                 }`}>
                   {format(day, "d")}
                 </span>
-                <div className="mt-0.5 space-y-0.5">
-                  {dayEvents.slice(0, 2).map((ev) => (
-                    <div key={ev.id} className={`text-xs rounded px-1 py-0.5 ${EVENT_TYPE_COLORS[ev.type]}`}>
-                      <div className="font-medium truncate leading-tight">{ev.title}</div>
-                      <div className="truncate leading-tight opacity-80">{ev.startTime}〜{ev.endTime}</div>
-                      {ev.location && (
-                        <div className="truncate leading-tight opacity-70 hidden md:block">📍 {ev.location}</div>
-                      )}
-                    </div>
-                  ))}
-                  {dayEvents.length > 2 && (
-                    <div className="text-xs text-gray-400 pl-1">+{dayEvents.length - 2}件</div>
-                  )}
+                <div className="mt-0.5">
+                  {/* スマホ: 1件目の時間と場所を折り返して表示 */}
+                  <div className="md:hidden">
+                    {dayEvents.slice(0, 1).map((ev) => (
+                      <div key={ev.id} className={`rounded px-1 py-1 ${EVENT_TYPE_COLORS[ev.type]}`}>
+                        <div className="text-[10px] font-semibold leading-tight break-all line-clamp-2">{ev.title}</div>
+                        <div className="text-[9px] leading-tight opacity-90 mt-0.5">
+                          <span className="block">{ev.startTime}</span>
+                          <span className="block">〜{ev.endTime}</span>
+                        </div>
+                        {ev.location && (
+                          <div className="text-[9px] leading-tight opacity-80 mt-0.5 break-all line-clamp-2">
+                            📍{ev.location}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {dayEvents.length > 1 && (
+                      <div className="text-[9px] text-gray-400 pl-0.5 mt-0.5">+{dayEvents.length - 1}件</div>
+                    )}
+                  </div>
+
+                  {/* PC: 従来どおり最大2件を横幅内に表示 */}
+                  <div className="hidden md:block space-y-0.5">
+                    {dayEvents.slice(0, 2).map((ev) => (
+                      <div key={ev.id} className={`text-xs rounded px-1 py-0.5 ${EVENT_TYPE_COLORS[ev.type]}`}>
+                        <div className="font-medium truncate leading-tight">{ev.title}</div>
+                        <div className="truncate leading-tight opacity-80">{ev.startTime}〜{ev.endTime}</div>
+                        {ev.location && (
+                          <div className="truncate leading-tight opacity-70">📍 {ev.location}</div>
+                        )}
+                      </div>
+                    ))}
+                    {dayEvents.length > 2 && (
+                      <div className="text-xs text-gray-400 pl-1">+{dayEvents.length - 2}件</div>
+                    )}
+                  </div>
                 </div>
               </button>
             );

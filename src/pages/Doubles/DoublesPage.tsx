@@ -305,7 +305,41 @@ export default function DoublesPage() {
             <h2 className="font-semibold">組み合わせ表</h2>
             <span className="text-xs text-green-100">{matches.length}試合</span>
           </div>
-          <div className="overflow-x-auto">
+
+          {/* スマホ: 2つのペアを上下に分けて名前を読みやすく表示 */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {matches.map((match) => (
+              <div key={match.number} className="p-3 even:bg-gray-50/60">
+                <div className="text-xs font-bold text-gray-500 mb-2">第{match.number}試合</div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                  <div className="text-[10px] font-semibold text-blue-500 mb-1">ペアA</div>
+                  <div className="grid grid-cols-2 divide-x divide-blue-200">
+                    <span className="px-1 text-center text-sm font-semibold text-blue-800 break-words">
+                      {match.teamA[0].name}
+                    </span>
+                    <span className="px-1 text-center text-sm font-semibold text-blue-800 break-words">
+                      {match.teamA[1].name}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-center text-xs font-bold text-gray-400 leading-6">vs</div>
+                <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                  <div className="text-[10px] font-semibold text-red-500 mb-1">ペアB</div>
+                  <div className="grid grid-cols-2 divide-x divide-red-200">
+                    <span className="px-1 text-center text-sm font-semibold text-red-800 break-words">
+                      {match.teamB[0].name}
+                    </span>
+                    <span className="px-1 text-center text-sm font-semibold text-red-800 break-words">
+                      {match.teamB[1].name}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* PC: 従来どおり横一列の表 */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full min-w-[320px] border-collapse">
               <thead>
                 <tr className="bg-green-50 text-xs text-gray-600">
