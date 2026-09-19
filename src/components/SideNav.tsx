@@ -1,5 +1,5 @@
 ﻿import { NavLink } from "react-router-dom";
-import { Calendar, Users, DollarSign, FileText, Settings, MessageSquare, Shuffle, MoreHorizontal } from "lucide-react";
+import { Calendar, Users, DollarSign, FileText, Settings, MessageSquare, Shuffle, CloudRain } from "lucide-react";
 
 const navItems = [
   { to: "/",        label: "スケジュール管理", icon: Calendar      },
@@ -9,7 +9,7 @@ const navItems = [
   { to: "/expense", label: "経費計算",         icon: DollarSign    },
   { to: "/report",  label: "報告書作成",       icon: FileText      },
   { to: "/settings",label: "通知設定",         icon: Settings      },
-  { to: "/more",    label: "その他",           icon: MoreHorizontal },
+  { to: "/more/rain-ranking", label: "雨男・雨女ランキング", icon: CloudRain },
 ];
 
 export default function SideNav() {
