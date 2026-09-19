@@ -7,6 +7,8 @@ import ReportPage from "./pages/Report/ReportPage";
 import SettingsPage from "./pages/Settings/SettingsPage";
 import BoardPage from "./pages/Board/BoardPage";
 import DoublesPage from "./pages/Doubles/DoublesPage";
+import MorePage from "./pages/More/MorePage";
+import RainRankingPage from "./pages/More/RainRankingPage";
 
 export default function App() {
   return (
@@ -20,6 +22,8 @@ export default function App() {
           <Route path="expense" element={<ExpensePage />} />
           <Route path="report" element={<ReportPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="more" element={<MorePage />} />
+          <Route path="more/rain-ranking" element={<RainRankingPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
