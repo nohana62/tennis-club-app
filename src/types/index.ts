@@ -13,6 +13,10 @@ export interface ClubEvent {
   feeCategory?: ExpenseCategory;
   /** 経費の説明（省略時はタイトル+場所から自動生成） */
   feeDescription?: string;
+  /** 未設定の既存データは scheduled（実施）として扱う */
+  status?: 'scheduled' | 'cancelled';
+  /** 中止時に通常料金の代わりに経費連携する金額 */
+  cancellationFee?: number;
   createdAt?: string;
 }
 

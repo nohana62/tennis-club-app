@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import ExcelJS from 'exceljs';
 import { findAttendanceForMember } from '../../utils/attendance';
+import { isEventCancelled } from '../../utils/events';
 
 const CATEGORY_LABELS: Record<string, string> = {
   court: 'コート代', ball: 'ボール代', equipment: '用具・備品',
@@ -50,6 +51,7 @@ export default function ReportPage() {
   // ── 対象データ ──────────────────────────────────────────
   const prefix = mode === 'monthly' ? reportMonth : reportYear;
   const filteredEvents = events.filter(e => e.date.startsWith(prefix));
+  const performedEvents = filteredEvents.filter(e => !isEventCancelled(e));
   const filteredExpenses = expenses.filter(e => e.date.startsWith(prefix));
   // 報告書に含める経費（チェックを外した項目は除外）
   const reportExpenses = filteredExpenses.filter(e => !e.id || !excludedExpenseIds.has(e.id));
@@ -58,18 +60,18 @@ export default function ReportPage() {
   // 年間: 月別集計
   const monthlyStats = mode === 'yearly' ? MONTHS.map(m => {
     const ym = `${reportYear}-${m}`;
-    const evs = events.filter(e => e.date.startsWith(ym));
+    const evs = events.filter(e => e.date.startsWith(ym) && !isEventCancelled(e));
     const exs = expenses.filter(e => e.date.startsWith(ym) && (!e.id || !excludedExpenseIds.has(e.id)));
     return { month: `${parseInt(m)}月`, events: evs.length, expense: exs.reduce((s, e) => s + e.amount, 0) };
   }) : [];
 
   // 参加率サマリー
   const attendanceSummary = members.map((m) => {
-    const targetEventIds = filteredEvents.map(e => e.id!);
+    const targetEventIds = performedEvents.map(e => e.id!);
     const attending = targetEventIds.filter(
       eventId => findAttendanceForMember(attendances, eventId, m)?.status === 'attending',
     ).length;
-    return { name: m.name, department: m.department, attending, total: filteredEvents.length };
+    return { name: m.name, department: m.department, attending, total: performedEvents.length };
   });
 
   function buildTitle() {
@@ -84,7 +86,7 @@ export default function ReportPage() {
 
     const evRows = filteredEvents.map(ev => `
       <tr>
-        <td>${ev.date}</td><td>${ev.title}</td>
+        <td>${ev.date}</td><td>${isEventCancelled(ev) ? '[中止] ' : ''}${ev.title}</td>
         <td>${EVENT_TYPE_LABELS[ev.type] ?? ev.type}</td>
         <td>${ev.startTime}〜${ev.endTime}</td><td>${ev.location}</td>
       </tr>`).join('');
@@ -105,11 +107,11 @@ export default function ReportPage() {
     const yearlySection = mode === 'yearly' ? `
       <h2>0. 月別サマリー</h2>
       <table>
-        <tr><th>月</th><th>イベント数</th><th>経費合計</th></tr>
+        <tr><th>月</th><th>実施件数</th><th>経費合計</th></tr>
         ${monthlyStats.filter(s => s.events > 0 || s.expense > 0).map(s =>
           `<tr><td>${s.month}</td><td>${s.events}件</td><td>¥${s.expense.toLocaleString()}</td></tr>`
         ).join('')}
-        <tr style="font-weight:bold;background:#dcfce7"><td>合計</td><td>${filteredEvents.length}件</td><td>¥${totalExpense.toLocaleString()}</td></tr>
+        <tr style="font-weight:bold;background:#dcfce7"><td>合計</td><td>${performedEvents.length}件</td><td>¥${totalExpense.toLocaleString()}</td></tr>
       </table>` : '';
 
     const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>${title}</title>
@@ -234,11 +236,11 @@ ${yearlySection}
     // ── 年間: 月別サマリー
     if (mode === 'yearly') {
       addSectionHeader('0. 月別サマリー');
-      addTableHeader(['月', 'イベント数', '経費合計', '', '']);
+      addTableHeader(['月', '実施件数', '経費合計', '', '']);
       monthlyStats.forEach((s, i) => {
         addDataRow([s.month, `${s.events}件`, `¥${s.expense.toLocaleString()}`, '', ''], i % 2 === 1);
       });
-      const totalRow = ws.addRow(['合計', `${filteredEvents.length}件`, `¥${totalExpense.toLocaleString()}`, '', '']);
+      const totalRow = ws.addRow(['合計', `${performedEvents.length}件`, `¥${totalExpense.toLocaleString()}`, '', '']);
       totalRow.eachCell((cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + GREEN_MID } };
         cell.font = { bold: true, size: 9 };
@@ -258,7 +260,13 @@ ${yearlySection}
       r.getCell(1).alignment = { horizontal: 'center' };
     } else {
       filteredEvents.forEach((ev, i) => {
-        const r = addDataRow([ev.date, ev.title, EVENT_TYPE_LABELS[ev.type] ?? ev.type, `${ev.startTime}〜${ev.endTime}`, ev.location], i % 2 === 1);
+        const r = addDataRow([
+          ev.date,
+          `${isEventCancelled(ev) ? '[中止] ' : ''}${ev.title}`,
+          EVENT_TYPE_LABELS[ev.type] ?? ev.type,
+          `${ev.startTime}〜${ev.endTime}`,
+          ev.location,
+        ], i % 2 === 1);
         r.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
         r.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
         r.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -362,7 +370,7 @@ ${yearlySection}
               <thead>
                 <tr className="bg-green-50">
                   <th className="text-left p-2 border border-gray-100">月</th>
-                  <th className="text-right p-2 border border-gray-100">イベント数</th>
+                  <th className="text-right p-2 border border-gray-100">実施件数</th>
                   <th className="text-right p-2 border border-gray-100">経費合計</th>
                 </tr>
               </thead>
@@ -376,7 +384,7 @@ ${yearlySection}
                 ))}
                 <tr className="bg-green-50 font-bold">
                   <td className="p-2 border border-gray-100">合計</td>
-                  <td className="p-2 border border-gray-100 text-right">{filteredEvents.length}件</td>
+                  <td className="p-2 border border-gray-100 text-right">{performedEvents.length}件</td>
                   <td className="p-2 border border-gray-100 text-right text-green-700">¥{totalExpense.toLocaleString()}</td>
                 </tr>
               </tbody>
@@ -399,7 +407,12 @@ ${yearlySection}
                 {filteredEvents.map((ev) => (
                   <tr key={ev.id} className="hover:bg-gray-50">
                     <td className="p-2 border border-gray-100">{ev.date}</td>
-                    <td className="p-2 border border-gray-100">{ev.title}</td>
+                    <td className="p-2 border border-gray-100">
+                      {isEventCancelled(ev) && (
+                        <span className="inline-block bg-gray-200 text-gray-700 font-bold rounded px-1.5 py-0.5 mr-1">中止</span>
+                      )}
+                      <span className={isEventCancelled(ev) ? 'line-through text-gray-500' : ''}>{ev.title}</span>
+                    </td>
                     <td className="p-2 border border-gray-100">{EVENT_TYPE_LABELS[ev.type] ?? ev.type}</td>
                     <td className="p-2 border border-gray-100">{ev.location}</td>
                   </tr>

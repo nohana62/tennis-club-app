@@ -4,6 +4,7 @@
  *    サーバーサイドプロキシ経由での送信を推奨します。
  */
 import { getAppConfig } from "./index";
+import type { ClubEvent } from "../types";
 
 const LINE_API = "https://api.line.me/v2/bot/message/push";
 
@@ -34,12 +35,15 @@ export function buildEventMessage(
   action: "added" | "updated" | "deleted",
   title: string,
   date: string,
-  location: string
+  location: string,
+  status?: ClubEvent["status"],
 ): string {
   const icons: Record<string, string> = {
     added: "🎾 新規",
     updated: "📝 変更",
     deleted: "❌ 削除",
   };
-  return `【テニス部お知らせ】${icons[action]}イベント\n\n📅 ${date}\n🏷 ${title}\n📍 ${location}\n\nご確認ください。`;
+  const statusText = status === "cancelled" ? "🚫 中止" : "✅ 実施";
+  const statusLine = action === "deleted" ? "" : `\n状況: ${statusText}`;
+  return `【テニス部お知らせ】${icons[action]}イベント\n\n📅 ${date}\n🏷 ${title}\n📍 ${location}${statusLine}\n\nご確認ください。`;
 }

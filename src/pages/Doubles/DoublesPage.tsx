@@ -8,6 +8,7 @@ import {
   type DoublesMatch,
   type DoublesParticipant,
 } from '../../utils/doubles';
+import { isEventCancelled } from '../../utils/events';
 
 const DEFAULT_MATCH_COUNT = 20;
 const MAX_MATCH_COUNT = 100;
@@ -54,7 +55,9 @@ export default function DoublesPage() {
           getMembers(),
           getAttendances(),
         ]);
-        const sortedEvents = [...eventData].sort((a, b) => a.date.localeCompare(b.date));
+        const sortedEvents = eventData
+          .filter((event) => !isEventCancelled(event))
+          .sort((a, b) => a.date.localeCompare(b.date));
         const today = format(new Date(), 'yyyy-MM-dd');
         const initialEvent = sortedEvents.find((event) => event.date >= today)
           ?? sortedEvents.at(-1);
@@ -165,7 +168,7 @@ export default function DoublesPage() {
         <div>
           <label className="text-xs text-gray-500 mb-1 block">対象の予定</label>
           {events.length === 0 ? (
-            <p className="text-sm text-gray-400">スケジュールがありません。</p>
+            <p className="text-sm text-gray-400">組み合わせを作成できる実施予定がありません。</p>
           ) : (
             <select
               value={selectedEventId}

@@ -1,8 +1,9 @@
 ﻿import { useEffect, useState } from 'react';
-import { UserCheck, UserX, Clock } from 'lucide-react';
+import { UserCheck, UserX, Clock, Ban } from 'lucide-react';
 import { getMembers, getAttendances, setAttendance, updateAttendance, getEvents } from '../../services/index';
 import type { Member, Attendance, AttendanceStatus, ClubEvent } from '../../types';
 import { findAttendanceForMember } from '../../utils/attendance';
+import { isEventCancelled } from '../../utils/events';
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   attending: '参加',
@@ -42,6 +43,8 @@ export default function MembersPage() {
   }
 
   async function handleAttendance(eventId: string, memberId: string, memberName: string, status: AttendanceStatus) {
+    const event = events.find((item) => item.id === eventId);
+    if (event && isEventCancelled(event)) return;
     const member = { id: memberId, name: memberName };
     const existing = findAttendanceForMember(attendances, eventId, member);
     if (existing?.id) {
@@ -70,6 +73,8 @@ export default function MembersPage() {
     absent: absentCount,
     pending: pendingCount,
   };
+  const selectedEventData = events.find((event) => event.id === selectedEvent);
+  const selectedEventCancelled = selectedEventData ? isEventCancelled(selectedEventData) : false;
 
   return (
     <div>
@@ -104,44 +109,56 @@ export default function MembersPage() {
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 >
                   {events.map((ev) => (
-                    <option key={ev.id} value={ev.id}>{ev.date} {ev.title}</option>
+                    <option key={ev.id} value={ev.id}>
+                      {ev.date} {isEventCancelled(ev) ? '[中止] ' : ''}{ev.title}
+                    </option>
                   ))}
                 </select>
               </div>
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {(['attending', 'absent', 'pending'] as AttendanceStatus[]).map((s) => (
-                  <div key={s} className={`rounded-xl p-2 text-center ${STATUS_COLOR[s]}`}>
-                    <div className="text-xl font-bold">{statCounts[s]}</div>
-                    <div className="text-xs">{STATUS_LABEL[s]}</div>
+              {selectedEventCancelled ? (
+                <div className="bg-gray-100 border border-gray-200 rounded-xl p-5 text-center text-gray-600">
+                  <Ban size={28} className="mx-auto mb-2" />
+                  <p className="font-semibold">この予定は中止です</p>
+                  <p className="text-xs mt-1">参加・欠席の登録や変更はできません。</p>
+                </div>
+              ) : (
+                <>
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    {(['attending', 'absent', 'pending'] as AttendanceStatus[]).map((s) => (
+                      <div key={s} className={`rounded-xl p-2 text-center ${STATUS_COLOR[s]}`}>
+                        <div className="text-xl font-bold">{statCounts[s]}</div>
+                        <div className="text-xs">{STATUS_LABEL[s]}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mb-3">参加率: {attendRate}%</p>
-              <div className="space-y-2">
-                {members.map((m) => {
-                  const status = getStatus(m.id!);
-                  return (
-                    <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm shrink-0">
-                        {m.name.slice(0, 1)}
-                      </div>
-                      <div className="flex-1 text-sm font-medium text-gray-800">{m.name}</div>
-                      <div className="flex gap-1 flex-wrap justify-end">
-                        {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
-                          <button
-                            key={s}
-                            onClick={() => handleAttendance(selectedEvent, m.id!, m.name, s)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                          >
-                            {STATUS_ICON[s]} {STATUS_LABEL[s]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                  <p className="text-xs text-gray-500 mb-3">参加率: {attendRate}%</p>
+                  <div className="space-y-2">
+                    {members.map((m) => {
+                      const status = getStatus(m.id!);
+                      return (
+                        <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm shrink-0">
+                            {m.name.slice(0, 1)}
+                          </div>
+                          <div className="flex-1 text-sm font-medium text-gray-800">{m.name}</div>
+                          <div className="flex gap-1 flex-wrap justify-end">
+                            {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
+                              <button
+                                key={s}
+                                onClick={() => handleAttendance(selectedEvent, m.id!, m.name, s)}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                              >
+                                {STATUS_ICON[s]} {STATUS_LABEL[s]}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -161,10 +178,16 @@ export default function MembersPage() {
               <div className="space-y-2">
                 {[...events].sort((a, b) => a.date.localeCompare(b.date)).map((ev) => {
                   const status = getStatus(selectedMember, ev.id!);
+                  const cancelled = isEventCancelled(ev);
                   return (
-                    <div key={ev.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 flex-wrap">
+                    <div key={ev.id} className={`rounded-xl border p-3 flex items-center gap-3 flex-wrap ${
+                      cancelled ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-100'
+                    }`}>
                       <div className="flex-1 min-w-[140px]">
-                        <p className="text-sm font-medium text-gray-800">{ev.title}</p>
+                        <p className="text-sm font-medium text-gray-800">
+                          {cancelled && <span className="inline-block bg-gray-200 text-gray-700 text-xs font-bold rounded px-1.5 py-0.5 mr-2">中止</span>}
+                          <span className={cancelled ? 'line-through text-gray-500' : ''}>{ev.title}</span>
+                        </p>
                         <p className="text-xs text-gray-400">
                           {ev.date}{ev.location ? ` ｜ ${ev.location}` : ''}
                           {ev.startTime ? ` ｜ ${ev.startTime}${ev.endTime ? `〜${ev.endTime}` : ''}` : ''}
@@ -174,8 +197,11 @@ export default function MembersPage() {
                         {(['attending', 'absent'] as AttendanceStatus[]).map((s) => (
                           <button
                             key={s}
+                            disabled={cancelled}
                             onClick={() => handleAttendance(ev.id!, selectedMember, members.find(m => m.id === selectedMember)?.name ?? '', s)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                              status === s ? STATUS_COLOR[s] + ' font-semibold' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                            }`}
                           >
                             {STATUS_ICON[s]} {STATUS_LABEL[s]}
                           </button>

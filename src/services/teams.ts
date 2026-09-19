@@ -2,6 +2,7 @@
  * Microsoft Teams Incoming Webhook 通知サービス
  */
 import { getAppConfig } from "./index";
+import type { ClubEvent } from "../types";
 
 export async function sendTeamsMessage(
   title: string,
@@ -41,7 +42,8 @@ export function buildEventCard(
   action: "added" | "updated" | "deleted",
   title: string,
   date: string,
-  location: string
+  location: string,
+  status?: ClubEvent["status"],
 ): { title: string; text: string; color: string } {
   const configs = {
     added:   { label: "新規イベント登録", color: "00a550" },
@@ -49,9 +51,12 @@ export function buildEventCard(
     deleted: { label: "イベント削除",     color: "ef4444" },
   };
   const { label, color } = configs[action];
+  const statusLine = action === "deleted"
+    ? ""
+    : `\n${status === "cancelled" ? "🚫 状況: 中止" : "✅ 状況: 実施"}`;
   return {
     title: label,
-    text: `**${title}**\n\n📅 日付: ${date}\n📍 場所: ${location}`,
-    color,
+    text: `**${title}**\n\n📅 日付: ${date}\n📍 場所: ${location}${statusLine}`,
+    color: action !== "deleted" && status === "cancelled" ? "6b7280" : color,
   };
 }

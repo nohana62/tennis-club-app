@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from "react";
-import { Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Send, DollarSign, UserCheck, UserX, Users, CheckCircle } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, X, Pencil, Trash2, Send, DollarSign, UserCheck, UserX, Users, CheckCircle, Ban } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameMonth, isSameDay, addMonths, subMonths, parseISO,
@@ -15,6 +15,7 @@ import { sendLineMessage, buildEventMessage } from "../../services/line";
 import { sendTeamsMessage, buildEventCard } from "../../services/teams";
 import type { ClubEvent, ExpenseCategory, Attendance, AttendanceStatus, Member } from "../../types";
 import { findAttendanceForMember } from "../../utils/attendance";
+import { isEventCancelled } from "../../utils/events";
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   practice: "練習", match: "試合", other: "その他",
@@ -36,6 +37,7 @@ const EMPTY_EVENT: Omit<ClubEvent, "id"> = {
   startTime: "09:00", endTime: "11:00",
   location: "", description: "", type: "practice",
   fee: 0, feeCategory: "court", feeDescription: "",
+  status: "scheduled", cancellationFee: 0,
 };
 
 export default function SchedulePage() {
@@ -106,6 +108,10 @@ export default function SchedulePage() {
 
   async function handleAttend(status: AttendanceStatus) {
     if (!detailEvent?.id) return;
+    if (isEventCancelled(detailEvent)) {
+      setAttendanceError("中止された予定には参加登録できません。");
+      return;
+    }
     if (!myName.trim()) {
       setAttendanceError("名前を選択または入力してください。");
       requestAnimationFrame(() => {
@@ -189,12 +195,18 @@ export default function SchedulePage() {
     async function syncExpense(eventId: string) {
       const expenses = await getExpenses();
       const linked = expenses.find((ex) => ex.eventId === eventId);
-      const fee = form.fee ?? 0;
-      if (fee > 0) {
+      const cancelled = isEventCancelled(form);
+      const amount = cancelled ? (form.cancellationFee ?? 0) : (form.fee ?? 0);
+      if (amount > 0) {
         const expenseData = {
-          eventId, date: form.date, category: form.feeCategory ?? "court",
-          description: form.feeDescription?.trim() || `${form.title}（${form.location || "場所未定"}）`,
-          amount: fee, paidBy: "",
+          eventId,
+          date: form.date,
+          category: cancelled ? "court" as const : (form.feeCategory ?? "court"),
+          description: cancelled
+            ? `${form.title}（${form.location || "場所未定"}）キャンセル料`
+            : (form.feeDescription?.trim() || `${form.title}（${form.location || "場所未定"}）`),
+          amount,
+          paidBy: "",
         };
         if (linked?.id) await updateExpense(linked.id, expenseData);
         else await addExpense(expenseData);
@@ -205,13 +217,13 @@ export default function SchedulePage() {
     if (editingEvent?.id) {
       await updateEvent(editingEvent.id, form);
       await syncExpense(editingEvent.id);
-      if (notifyLine) await sendLineMessage(buildEventMessage("updated", form.title, form.date, form.location));
-      if (notifyTeams) { const c = buildEventCard("updated", form.title, form.date, form.location); await sendTeamsMessage(c.title, c.text, c.color); }
+      if (notifyLine) await sendLineMessage(buildEventMessage("updated", form.title, form.date, form.location, form.status));
+      if (notifyTeams) { const c = buildEventCard("updated", form.title, form.date, form.location, form.status); await sendTeamsMessage(c.title, c.text, c.color); }
     } else {
       const newId = await addEvent(form);
       await syncExpense(newId);
-      if (notifyLine) await sendLineMessage(buildEventMessage("added", form.title, form.date, form.location));
-      if (notifyTeams) { const c = buildEventCard("added", form.title, form.date, form.location); await sendTeamsMessage(c.title, c.text, c.color); }
+      if (notifyLine) await sendLineMessage(buildEventMessage("added", form.title, form.date, form.location, form.status));
+      if (notifyTeams) { const c = buildEventCard("added", form.title, form.date, form.location, form.status); await sendTeamsMessage(c.title, c.text, c.color); }
     }
     setShowForm(false);
     await loadAll();
@@ -296,8 +308,14 @@ export default function SchedulePage() {
                   {/* スマホ: 1件目の時間と場所を折り返して表示 */}
                   <div className="md:hidden">
                     {dayEvents.slice(0, 1).map((ev) => (
-                      <div key={ev.id} className={`rounded px-1 py-1 ${EVENT_TYPE_COLORS[ev.type]}`}>
-                        <div className="text-[10px] font-semibold leading-tight break-all line-clamp-2">{ev.title}</div>
+                      <div key={ev.id} className={`rounded px-1 py-1 ${
+                        isEventCancelled(ev) ? "bg-gray-200 text-gray-500" : EVENT_TYPE_COLORS[ev.type]
+                      }`}>
+                        <div className={`text-[10px] font-semibold leading-tight break-all line-clamp-2 ${
+                          isEventCancelled(ev) ? "line-through" : ""
+                        }`}>
+                          {isEventCancelled(ev) ? "中止 " : ""}{ev.title}
+                        </div>
                         <div className="text-[9px] leading-tight opacity-90 mt-0.5">
                           <span className="block">{ev.startTime}</span>
                           <span className="block">〜{ev.endTime}</span>
@@ -317,8 +335,12 @@ export default function SchedulePage() {
                   {/* PC: 従来どおり最大2件を横幅内に表示 */}
                   <div className="hidden md:block space-y-0.5">
                     {dayEvents.slice(0, 2).map((ev) => (
-                      <div key={ev.id} className={`text-xs rounded px-1 py-0.5 ${EVENT_TYPE_COLORS[ev.type]}`}>
-                        <div className="font-medium truncate leading-tight">{ev.title}</div>
+                      <div key={ev.id} className={`text-xs rounded px-1 py-0.5 ${
+                        isEventCancelled(ev) ? "bg-gray-200 text-gray-500" : EVENT_TYPE_COLORS[ev.type]
+                      }`}>
+                        <div className={`font-medium truncate leading-tight ${isEventCancelled(ev) ? "line-through" : ""}`}>
+                          {isEventCancelled(ev) ? "中止 " : ""}{ev.title}
+                        </div>
                         <div className="truncate leading-tight opacity-80">{ev.startTime}〜{ev.endTime}</div>
                         {ev.location && (
                           <div className="truncate leading-tight opacity-70">📍 {ev.location}</div>
@@ -370,7 +392,10 @@ export default function SchedulePage() {
                       <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[ev.type]}`}>
                         {EVENT_TYPE_LABELS[ev.type]}
                       </span>
-                      <span className="text-sm font-medium text-gray-800 truncate">{ev.title}</span>
+                      {isEventCancelled(ev) && (
+                        <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-gray-200 text-gray-600">中止</span>
+                      )}
+                      <span className={`text-sm font-medium text-gray-800 truncate ${isEventCancelled(ev) ? "line-through" : ""}`}>{ev.title}</span>
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">{ev.startTime}〜{ev.endTime}{ev.location && ` ｜ ${ev.location}`}</p>
                   </button>
@@ -423,7 +448,10 @@ export default function SchedulePage() {
                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[ev.type]}`}>
                           {EVENT_TYPE_LABELS[ev.type]}
                         </span>
-                        <span className="text-sm font-medium text-gray-800">{ev.title}</span>
+                        {isEventCancelled(ev) && (
+                          <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-gray-200 text-gray-600">中止</span>
+                        )}
+                        <span className={`text-sm font-medium text-gray-800 ${isEventCancelled(ev) ? "line-through" : ""}`}>{ev.title}</span>
                       </div>
                       <p className="text-xs text-gray-400">{ev.startTime}〜{ev.endTime}{ev.location && ` ｜ ${ev.location}`}</p>
                     </button>
@@ -485,13 +513,25 @@ export default function SchedulePage() {
                   <span className={`text-xs px-2 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[detailEvent.type]}`}>
                     {EVENT_TYPE_LABELS[detailEvent.type]}
                   </span>
-                  {(detailEvent.fee ?? 0) > 0 && (
+                  {isEventCancelled(detailEvent) && (
+                    <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded font-bold">
+                      中止
+                    </span>
+                  )}
+                  {!isEventCancelled(detailEvent) && (detailEvent.fee ?? 0) > 0 && (
                     <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-medium">
                       ¥{(detailEvent.fee ?? 0).toLocaleString()}
                     </span>
                   )}
+                  {isEventCancelled(detailEvent) && (detailEvent.cancellationFee ?? 0) > 0 && (
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">
+                      キャンセル料 ¥{(detailEvent.cancellationFee ?? 0).toLocaleString()}
+                    </span>
+                  )}
                 </div>
-                <h2 className="font-bold text-gray-800 text-lg">{detailEvent.title}</h2>
+                <h2 className={`font-bold text-gray-800 text-lg ${isEventCancelled(detailEvent) ? "line-through" : ""}`}>
+                  {detailEvent.title}
+                </h2>
                 <p className="text-sm text-gray-500 mt-0.5">
                   📅 {detailEvent.date} {detailEvent.startTime}〜{detailEvent.endTime}
                 </p>
@@ -512,8 +552,16 @@ export default function SchedulePage() {
 
             {/* 参加登録フォーム */}
             <div className="mt-4 border-t border-gray-100 pt-4">
-              <h3 className="font-semibold text-gray-700 mb-3 text-sm">✋ 参加・不参加を登録</h3>
-              {submitted ? (
+              {isEventCancelled(detailEvent) ? (
+                <div className="bg-gray-100 border border-gray-200 rounded-xl p-4 text-center">
+                  <Ban size={28} className="text-gray-500 mx-auto mb-2" />
+                  <p className="font-semibold text-gray-700">この予定は中止です</p>
+                  <p className="text-xs text-gray-500 mt-1">参加・不参加の登録や変更はできません。</p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="font-semibold text-gray-700 mb-3 text-sm">✋ 参加・不参加を登録</h3>
+                  {submitted ? (
                 <SubmittedView
                   name={myName}
                   status={getMyStatus(detailEvent.id!)}
@@ -620,6 +668,8 @@ export default function SchedulePage() {
                     </button>
                   </div>
                 </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -655,6 +705,33 @@ export default function SchedulePage() {
               <input required type="text" placeholder="タイトル" value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">実施状況</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, status: "scheduled" })}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                      !isEventCancelled(form)
+                        ? "bg-green-600 text-white border-green-600"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-green-300"
+                    }`}
+                  >
+                    実施
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, status: "cancelled" })}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                      isEventCancelled(form)
+                        ? "bg-red-600 text-white border-red-600"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-red-300"
+                    }`}
+                  >
+                    中止
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="min-w-0">
                   <label className="text-xs text-gray-500">日付</label>
@@ -687,10 +764,32 @@ export default function SchedulePage() {
               <textarea placeholder="備考" value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={3} className="w-full border rounded-lg px-3 py-2 text-sm resize-none" />
+              {isEventCancelled(form) && (
+                <div className="bg-red-50 rounded-lg p-3 space-y-2 border border-red-200">
+                  <p className="text-xs font-semibold text-red-700 flex items-center gap-1">
+                    <Ban size={12} /> キャンセル料（経費に自動連携）
+                  </p>
+                  <div>
+                    <label className="text-xs text-gray-500">金額 (円)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.cancellationFee ?? 0}
+                      onChange={(e) => setForm({ ...form, cancellationFee: Number(e.target.value) })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <p className="text-xs text-red-600">
+                    通常の使用料金に代わり、コート代のキャンセル料として経費へ登録されます。
+                  </p>
+                </div>
+              )}
               {/* 使用料金 */}
-              <div className="bg-green-50 rounded-lg p-3 space-y-2 border border-green-100">
+              <div className={`rounded-lg p-3 space-y-2 border ${
+                isEventCancelled(form) ? "bg-gray-50 border-gray-200" : "bg-green-50 border-green-100"
+              }`}>
                 <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
-                  <DollarSign size={12} /> 使用料金（経費に自動連携）
+                  <DollarSign size={12} /> {isEventCancelled(form) ? "通常の使用料金（実施時に復元）" : "使用料金（経費に自動連携）"}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="min-w-0">
@@ -829,11 +928,14 @@ function EventCard({
   onEdit: (e: ClubEvent) => void;
   onDelete: (e: ClubEvent) => void;
 }) {
+  const cancelled = isEventCancelled(event);
   const attending = attendances.filter((a) => a.status === "attending").length;
   const absent    = attendances.filter((a) => a.status === "absent").length;
   return (
     <div
-      className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:border-green-300 transition cursor-pointer"
+      className={`flex items-start gap-3 p-3 rounded-lg border transition cursor-pointer ${
+        cancelled ? "border-gray-200 bg-gray-50 hover:border-gray-300" : "border-gray-100 hover:border-green-300"
+      }`}
       onClick={() => onOpen(event)}
     >
       <div className="flex-1 min-w-0">
@@ -841,10 +943,18 @@ function EventCard({
           <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[event.type]}`}>
             {EVENT_TYPE_LABELS[event.type]}
           </span>
-          <span className="text-sm font-medium text-gray-800 truncate">{event.title}</span>
-          {(event.fee ?? 0) > 0 && (
+          {cancelled && (
+            <span className="text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold">中止</span>
+          )}
+          <span className={`text-sm font-medium text-gray-800 truncate ${cancelled ? "line-through" : ""}`}>{event.title}</span>
+          {!cancelled && (event.fee ?? 0) > 0 && (
             <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium shrink-0">
               ¥{(event.fee ?? 0).toLocaleString()}
+            </span>
+          )}
+          {cancelled && (event.cancellationFee ?? 0) > 0 && (
+            <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium shrink-0">
+              キャンセル料 ¥{(event.cancellationFee ?? 0).toLocaleString()}
             </span>
           )}
         </div>
@@ -852,7 +962,7 @@ function EventCard({
           {event.date} {event.startTime}〜{event.endTime}
           {event.location && ` ｜ ${event.location}`}
         </p>
-        {attendances.length > 0 && (
+        {!cancelled && attendances.length > 0 && (
           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
             <span className="text-green-600">✔ {attending}人参加</span>
             {absent > 0 && <span className="text-red-400">✘ {absent}人不参加</span>}
