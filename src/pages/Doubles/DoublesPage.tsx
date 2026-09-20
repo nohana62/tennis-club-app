@@ -36,6 +36,8 @@ interface PendingScoreEdit {
   scoreRevision: number;
 }
 
+type DoublesView = 'matches' | 'ranking';
+
 function rankingBadgeClass(rank: number): string {
   if (rank === 1) return 'bg-amber-100 text-amber-700';
   if (rank === 2) return 'bg-slate-200 text-slate-700';
@@ -86,6 +88,7 @@ export default function DoublesPage() {
   const [scoreDraft, setScoreDraft] = useState<ScoreDraft | null>(null);
   const [pendingScoreEdit, setPendingScoreEdit] = useState<PendingScoreEdit | null>(null);
   const [savingScore, setSavingScore] = useState(false);
+  const [activeView, setActiveView] = useState<DoublesView>('matches');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const scoreSaveRequestRef = useRef(0);
@@ -160,6 +163,7 @@ export default function DoublesPage() {
     setRecreateConfirmation('');
     setScoreDraft(null);
     setPendingScoreEdit(null);
+    setActiveView('matches');
     setSelectedEventId(eventId);
     setExcludedIds(new Set());
     setTemporaryParticipants([]);
@@ -693,6 +697,54 @@ export default function DoublesPage() {
       </div>
 
       {matches.length > 0 && (
+        <div
+          className="grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1 mb-3"
+          role="tablist"
+          aria-label="組み合わせ表示の切替"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === 'matches'}
+            onClick={() => setActiveView('matches')}
+            className={`min-h-12 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+              activeView === 'matches'
+                ? 'bg-white text-green-700 shadow-sm'
+                : 'text-gray-500 hover:bg-white/60'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-1.5">
+              <Shuffle size={16} />
+              組み合わせ
+            </span>
+            <span className="block text-[11px] font-normal mt-0.5">
+              {completedCount} / {matches.length} 試合完了
+            </span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === 'ranking'}
+            onClick={() => setActiveView('ranking')}
+            disabled={scoreDraft !== null || savingScore}
+            className={`min-h-12 rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              activeView === 'ranking'
+                ? 'bg-white text-sky-700 shadow-sm'
+                : 'text-gray-500 hover:bg-white/60'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-1.5">
+              <BarChart3 size={16} />
+              ランキング
+            </span>
+            <span className="block text-[11px] font-normal mt-0.5">
+              {gameRanking.length}人を集計
+            </span>
+          </button>
+        </div>
+      )}
+
+      {matches.length > 0 && activeView === 'matches' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 bg-green-700 text-white flex items-center justify-between gap-3">
             <div>
@@ -792,8 +844,8 @@ export default function DoublesPage() {
         </div>
       )}
 
-      {savedSchedule && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mt-5">
+      {savedSchedule && activeView === 'ranking' && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
             <BarChart3 size={19} className="text-sky-600" />
             <div>
