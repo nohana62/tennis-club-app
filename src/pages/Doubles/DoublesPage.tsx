@@ -221,6 +221,7 @@ export default function DoublesPage() {
     }
     const generatedMatches: StoredDoublesMatch[] = generateDoublesMatches(selectedParticipants, count)
       .map((match) => ({ ...match, completed: false, scoreRevision: 0 }));
+    setActiveView('matches');
     setSaving(true);
     setError('');
     try {
@@ -290,6 +291,7 @@ export default function DoublesPage() {
     setTemporaryParticipants([]);
     setTemporaryName('');
     setMatchCount(String(savedSchedule?.matches.length ?? DEFAULT_MATCH_COUNT));
+    setActiveView('matches');
     setError('');
     setScoreDraft(null);
     setPendingScoreEdit(null);
@@ -727,6 +729,7 @@ export default function DoublesPage() {
             aria-selected={activeView === 'ranking'}
             onClick={() => setActiveView('ranking')}
             disabled={scoreDraft !== null || savingScore}
+            title={scoreDraft !== null || savingScore ? '結果の入力中は切り替えできません' : undefined}
             className={`min-h-12 rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
               activeView === 'ranking'
                 ? 'bg-white text-sky-700 shadow-sm'
