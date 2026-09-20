@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Lock, Plus, RotateCcw, Shuffle, Trash2, UserCheck, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, CheckCircle2, Lock, Plus, RotateCcw, Shuffle, Trash2, UserCheck, X } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   createDoublesSchedule,
@@ -7,7 +7,7 @@ import {
   getEvents,
   getMembers,
   replaceDoublesSchedule,
-  setDoublesMatchCompleted,
+  saveDoublesMatchScore,
   subscribeDoublesSchedule,
 } from '../../services';
 import type { Attendance, ClubEvent, DoublesSchedule, Member, StoredDoublesMatch } from '../../types';
@@ -16,9 +16,32 @@ import {
   type DoublesParticipant,
 } from '../../utils/doubles';
 import { isEventCancelled } from '../../utils/events';
+import { buildDoublesGameRanking, hasDoublesScore } from '../../utils/doublesResults';
 
 const DEFAULT_MATCH_COUNT = 20;
 const MAX_MATCH_COUNT = 100;
+const EMPTY_MATCHES: StoredDoublesMatch[] = [];
+
+interface ScoreDraft {
+  matchNumber: number;
+  generationId: string;
+  expectedScoreRevision: number;
+  teamAGames: string;
+  teamBGames: string;
+}
+
+interface PendingScoreEdit {
+  matchNumber: number;
+  generationId: string;
+  scoreRevision: number;
+}
+
+function rankingBadgeClass(rank: number): string {
+  if (rank === 1) return 'bg-amber-100 text-amber-700';
+  if (rank === 2) return 'bg-slate-200 text-slate-700';
+  if (rank === 3) return 'bg-orange-100 text-orange-700';
+  return 'bg-gray-100 text-gray-600';
+}
 
 function getEventParticipants(
   eventId: string,
@@ -60,9 +83,12 @@ export default function DoublesPage() {
   const [confirmingRevision, setConfirmingRevision] = useState<number | null>(null);
   const [recreateConfirmation, setRecreateConfirmation] = useState('');
   const [saving, setSaving] = useState(false);
-  const [updatingMatchNumber, setUpdatingMatchNumber] = useState<number | null>(null);
+  const [scoreDraft, setScoreDraft] = useState<ScoreDraft | null>(null);
+  const [pendingScoreEdit, setPendingScoreEdit] = useState<PendingScoreEdit | null>(null);
+  const [savingScore, setSavingScore] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const scoreSaveRequestRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -121,6 +147,8 @@ export default function DoublesPage() {
   );
 
   function changeEvent(eventId: string) {
+    scoreSaveRequestRef.current += 1;
+    setSavingScore(false);
     setSavedSchedule(null);
     setScheduleLoading(Boolean(eventId));
     setIsRecreating(false);
@@ -130,6 +158,8 @@ export default function DoublesPage() {
     setConfirmingGenerationId(null);
     setConfirmingRevision(null);
     setRecreateConfirmation('');
+    setScoreDraft(null);
+    setPendingScoreEdit(null);
     setSelectedEventId(eventId);
     setExcludedIds(new Set());
     setTemporaryParticipants([]);
@@ -186,7 +216,7 @@ export default function DoublesPage() {
       return;
     }
     const generatedMatches: StoredDoublesMatch[] = generateDoublesMatches(selectedParticipants, count)
-      .map((match) => ({ ...match, completed: false }));
+      .map((match) => ({ ...match, completed: false, scoreRevision: 0 }));
     setSaving(true);
     setError('');
     try {
@@ -257,6 +287,8 @@ export default function DoublesPage() {
     setTemporaryName('');
     setMatchCount(String(savedSchedule?.matches.length ?? DEFAULT_MATCH_COUNT));
     setError('');
+    setScoreDraft(null);
+    setPendingScoreEdit(null);
   }
 
   function cancelRecreation() {
@@ -267,35 +299,189 @@ export default function DoublesPage() {
     setTemporaryParticipants([]);
     setTemporaryName('');
     setError('');
+    setScoreDraft(null);
+    setPendingScoreEdit(null);
   }
 
-  async function toggleMatchCompleted(match: StoredDoublesMatch) {
-    if (!selectedEventId || updatingMatchNumber !== null) return;
-    setUpdatingMatchNumber(match.number);
+  function beginScoreEntry(match: StoredDoublesMatch) {
+    if (!savedSchedule) return;
+    setScoreDraft({
+      matchNumber: match.number,
+      generationId: savedSchedule.generationId,
+      expectedScoreRevision: match.scoreRevision ?? 0,
+      teamAGames: '',
+      teamBGames: '',
+    });
+    setError('');
+  }
+
+  function requestScoreEdit(match: StoredDoublesMatch) {
+    if (!savedSchedule) return;
+    setPendingScoreEdit({
+      matchNumber: match.number,
+      generationId: savedSchedule.generationId,
+      scoreRevision: match.scoreRevision ?? 0,
+    });
+  }
+
+  function confirmScoreEdit() {
+    if (!pendingScoreEdit || !savedSchedule) return;
+    const match = savedSchedule.matches.find((item) => item.number === pendingScoreEdit.matchNumber);
+    if (
+      !match
+      || savedSchedule.generationId !== pendingScoreEdit.generationId
+      || (match.scoreRevision ?? 0) !== pendingScoreEdit.scoreRevision
+      || !hasDoublesScore(match)
+    ) {
+      setPendingScoreEdit(null);
+      setError('確認中に別の端末で結果が更新されました。最新の結果を確認してください。');
+      return;
+    }
+    setScoreDraft({
+      matchNumber: match.number,
+      generationId: pendingScoreEdit.generationId,
+      expectedScoreRevision: pendingScoreEdit.scoreRevision,
+      teamAGames: String(match.teamAGames),
+      teamBGames: String(match.teamBGames),
+    });
+    setPendingScoreEdit(null);
+    setError('');
+  }
+
+  async function saveScore() {
+    if (!selectedEventId || !scoreDraft || savingScore) return;
+    const validScore = (value: string) => /^\d{1,2}$/.test(value)
+      && Number(value) >= 0
+      && Number(value) <= 99;
+    if (!validScore(scoreDraft.teamAGames) || !validScore(scoreDraft.teamBGames)) {
+      setError('取得ゲーム数は、両ペアとも0～99の整数で入力してください。');
+      return;
+    }
+    const requestId = ++scoreSaveRequestRef.current;
+    setSavingScore(true);
     setError('');
     try {
-      if (!savedSchedule) return;
-      const updated = await setDoublesMatchCompleted(
+      const updated = await saveDoublesMatchScore(
         selectedEventId,
-        savedSchedule.generationId,
-        match.number,
-        !match.completed,
+        scoreDraft.generationId,
+        scoreDraft.matchNumber,
+        scoreDraft.expectedScoreRevision,
+        Number(scoreDraft.teamAGames),
+        Number(scoreDraft.teamBGames),
       );
+      if (scoreSaveRequestRef.current !== requestId) return;
       if (!updated) {
-        setError('別の端末で組み合わせが更新されました。最新の表を確認して、もう一度操作してください。');
+        setScoreDraft(null);
+        setError('別の端末でこの試合の結果または組み合わせが更新されました。最新の内容を確認してください。');
+      } else {
+        setScoreDraft(null);
       }
-    } catch (updateError) {
-      console.error('試合の完了状態を更新できませんでした', updateError);
-      setError('試合の完了状態を更新できませんでした。通信状態を確認して、もう一度お試しください。');
+    } catch (scoreError) {
+      if (scoreSaveRequestRef.current !== requestId) return;
+      console.error('試合結果を保存できませんでした', scoreError);
+      setError('試合結果を保存できませんでした。通信状態を確認して、もう一度お試しください。');
     } finally {
-      setUpdatingMatchNumber(null);
+      if (scoreSaveRequestRef.current === requestId) {
+        setSavingScore(false);
+      }
     }
   }
 
+  const matches = savedSchedule?.matches ?? EMPTY_MATCHES;
+  const completedCount = matches.filter(hasDoublesScore).length;
+  const gameRanking = useMemo(() => buildDoublesGameRanking(matches), [matches]);
+
   if (loading) return <div className="text-gray-400 text-sm p-4">読み込み中...</div>;
 
-  const matches = savedSchedule?.matches ?? [];
-  const completedCount = matches.filter((match) => match.completed).length;
+  function renderScoreControls(match: StoredDoublesMatch) {
+    const hasScore = hasDoublesScore(match);
+    const editing = scoreDraft?.matchNumber === match.number;
+
+    if (editing && scoreDraft) {
+      return (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+            <label>
+              <span className="text-[11px] text-blue-700 block mb-1">ペアA</span>
+              <input
+                type="number"
+                min="0"
+                max="99"
+                inputMode="numeric"
+                value={scoreDraft.teamAGames}
+                onChange={(event) => setScoreDraft({ ...scoreDraft, teamAGames: event.target.value })}
+                className="w-full border rounded-lg px-2 py-2 text-center text-lg font-bold"
+                aria-label={`第${match.number}試合 ペアAの取得ゲーム数`}
+              />
+            </label>
+            <span className="text-gray-400 font-bold pb-2">－</span>
+            <label>
+              <span className="text-[11px] text-red-700 block mb-1">ペアB</span>
+              <input
+                type="number"
+                min="0"
+                max="99"
+                inputMode="numeric"
+                value={scoreDraft.teamBGames}
+                onChange={(event) => setScoreDraft({ ...scoreDraft, teamBGames: event.target.value })}
+                className="w-full border rounded-lg px-2 py-2 text-center text-lg font-bold"
+                aria-label={`第${match.number}試合 ペアBの取得ゲーム数`}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <button
+              type="button"
+              onClick={() => setScoreDraft(null)}
+              disabled={savingScore}
+              className="border border-gray-300 bg-white text-gray-600 rounded-lg py-2 text-xs disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              onClick={saveScore}
+              disabled={savingScore}
+              className="bg-green-600 text-white rounded-lg py-2 text-xs font-semibold hover:bg-green-700 disabled:opacity-50"
+            >
+              {savingScore ? '保存中...' : '結果を保存'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (hasScore) {
+      return (
+        <div className="flex items-center justify-center gap-3">
+          <span className="text-lg font-bold text-gray-800">
+            <span className="text-blue-700">{match.teamAGames}</span>
+            <span className="text-gray-400 mx-2">－</span>
+            <span className="text-red-700">{match.teamBGames}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => requestScoreEdit(match)}
+            disabled={scoreDraft !== null}
+            className="text-xs text-gray-500 underline underline-offset-2 hover:text-amber-700 disabled:opacity-40"
+          >
+            結果を修正
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => beginScoreEntry(match)}
+        disabled={scoreDraft !== null}
+        className="w-full border border-green-300 bg-white text-green-700 rounded-lg py-2 text-xs font-semibold hover:bg-green-50 disabled:opacity-40"
+      >
+        結果を入力
+      </button>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -317,7 +503,8 @@ export default function DoublesPage() {
             <select
               value={selectedEventId}
               onChange={(event) => changeEvent(event.target.value)}
-              className="w-full border rounded-lg px-3 py-2.5 text-sm bg-white"
+              disabled={savingScore}
+              className="w-full border rounded-lg px-3 py-2.5 text-sm bg-white disabled:opacity-50"
             >
               {events.map((event) => (
                 <option key={event.id} value={event.id}>
@@ -527,24 +714,17 @@ export default function DoublesPage() {
           {/* スマホ: 2つのペアを上下に分けて名前を読みやすく表示 */}
           <div className="md:hidden divide-y divide-gray-100">
             {matches.map((match) => (
-              <div key={match.number} className={`p-3 ${match.completed ? 'bg-green-50/70' : 'even:bg-gray-50/60'}`}>
+              <div key={match.number} className={`p-3 ${hasDoublesScore(match) ? 'bg-green-50/70' : 'even:bg-gray-50/60'}`}>
                 <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className={`text-xs font-bold ${match.completed ? 'text-green-700' : 'text-gray-500'}`}>
+                  <div className={`text-xs font-bold ${hasDoublesScore(match) ? 'text-green-700' : 'text-gray-500'}`}>
                     第{match.number}試合
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleMatchCompleted(match)}
-                    disabled={updatingMatchNumber !== null}
-                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
-                      match.completed
-                        ? 'bg-green-600 text-white'
-                        : 'bg-white border border-gray-300 text-gray-600 hover:border-green-400'
-                    }`}
-                  >
-                    <CheckCircle2 size={14} />
-                    {updatingMatchNumber === match.number ? '更新中...' : match.completed ? '完了済み' : '完了にする'}
-                  </button>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
+                    hasDoublesScore(match) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    <CheckCircle2 size={13} />
+                    {hasDoublesScore(match) ? '結果登録済み' : '結果未登録'}
+                  </span>
                 </div>
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
                   <div className="text-[10px] font-semibold text-blue-500 mb-1">ペアA</div>
@@ -569,6 +749,7 @@ export default function DoublesPage() {
                     </span>
                   </div>
                 </div>
+                <div className="mt-3">{renderScoreControls(match)}</div>
               </div>
             ))}
           </div>
@@ -582,13 +763,13 @@ export default function DoublesPage() {
                   <th className="p-2.5 text-center">ペアA</th>
                   <th className="p-2.5 text-center w-10">対戦</th>
                   <th className="p-2.5 text-center">ペアB</th>
-                  <th className="p-2.5 text-center w-28">進行</th>
+                  <th className="p-2.5 text-center w-64">取得ゲーム数</th>
                 </tr>
               </thead>
               <tbody>
                 {matches.map((match) => (
                   <tr key={match.number} className={`border-t border-gray-100 ${
-                    match.completed ? 'bg-green-50/70' : 'even:bg-gray-50/60'
+                    hasDoublesScore(match) ? 'bg-green-50/70' : 'even:bg-gray-50/60'
                   }`}>
                     <td className="p-2.5 text-center text-xs font-semibold text-gray-500">
                       第{match.number}試合
@@ -601,24 +782,114 @@ export default function DoublesPage() {
                       {match.teamB[0].name}<span className="text-gray-400 mx-1">・</span>{match.teamB[1].name}
                     </td>
                     <td className="p-2.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => toggleMatchCompleted(match)}
-                        disabled={updatingMatchNumber !== null}
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
-                          match.completed
-                            ? 'bg-green-600 text-white'
-                            : 'bg-white border border-gray-300 text-gray-600 hover:border-green-400'
-                        }`}
-                      >
-                        <CheckCircle2 size={14} />
-                        {updatingMatchNumber === match.number ? '更新中...' : match.completed ? '完了済み' : '完了'}
-                      </button>
+                      {renderScoreControls(match)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {savedSchedule && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mt-5">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+            <BarChart3 size={19} className="text-sky-600" />
+            <div>
+              <h2 className="font-semibold text-gray-800">本日の取得ゲームランキング</h2>
+              <p className="text-[11px] text-gray-400">結果を保存した試合だけを集計</p>
+            </div>
+          </div>
+
+          {gameRanking.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center p-6">
+              試合結果を登録するとランキングが表示されます。
+            </p>
+          ) : (
+            <>
+              <div className="md:hidden divide-y divide-gray-100">
+                {gameRanking.map((entry) => (
+                  <div key={entry.id} className="p-3 flex items-center gap-3">
+                    <span className={`w-9 h-9 rounded-full flex items-center justify-center font-bold shrink-0 ${rankingBadgeClass(entry.rank)}`}>
+                      {entry.rank}
+                    </span>
+                    <span className="flex-1 min-w-0 font-semibold text-gray-800 truncate">{entry.name}</span>
+                    <span className="text-right shrink-0">
+                      <span className="block text-lg font-bold text-sky-700">{entry.totalGames}ゲーム</span>
+                      <span className="block text-[11px] text-gray-400">{entry.matchesPlayed}試合</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden md:block">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="p-2.5 text-center w-24">順位</th>
+                      <th className="p-2.5 text-left">名前</th>
+                      <th className="p-2.5 text-right w-28">試合数</th>
+                      <th className="p-2.5 text-right w-40">総合取得ゲーム数</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gameRanking.map((entry) => (
+                      <tr key={entry.id} className="border-t border-gray-100">
+                        <td className="p-2.5 text-center">
+                          <span className={`inline-flex w-8 h-8 rounded-full items-center justify-center font-bold ${rankingBadgeClass(entry.rank)}`}>
+                            {entry.rank}
+                          </span>
+                        </td>
+                        <td className="p-2.5 font-semibold text-gray-800">{entry.name}</td>
+                        <td className="p-2.5 text-right text-gray-600">{entry.matchesPlayed}試合</td>
+                        <td className="p-2.5 text-right font-bold text-sky-700">{entry.totalGames}ゲーム</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {pendingScoreEdit && (
+        <div className="fixed inset-0 z-[70] bg-black/40 overflow-y-auto overscroll-contain">
+          <div className="min-h-full flex items-start md:items-center justify-center p-4 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="font-bold text-gray-800">第{pendingScoreEdit.matchNumber}試合の結果を修正しますか？</h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    修正したゲーム数は全端末とランキングへ反映されます。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingScoreEdit(null)}
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                  aria-label="閉じる"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingScoreEdit(null)}
+                  className="border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm hover:bg-gray-50"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmScoreEdit}
+                  className="bg-amber-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-amber-700"
+                >
+                  結果を修正
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

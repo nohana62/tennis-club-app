@@ -17,6 +17,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { ClubEvent, Member, Attendance, Expense, Post, DoublesSchedule, StoredDoublesMatch } from '../types';
+import { isValidDoublesGames } from '../utils/doublesResults';
 import { createGenerationId } from '../utils/ids';
 
 const firebaseConfig = {
@@ -203,6 +204,45 @@ export async function setDoublesMatchCompleted(
     if (!matches.some((match) => match.number === matchNumber)) {
       throw new Error('対象の試合が見つかりません。');
     }
+    transaction.update(ref, {
+      matches,
+      revision: (schedule.revision ?? 0) + 1,
+      updatedAt: Timestamp.now().toDate().toISOString(),
+    });
+    return true;
+  });
+}
+
+export async function saveDoublesMatchScore(
+  eventId: string,
+  expectedGenerationId: string,
+  matchNumber: number,
+  expectedScoreRevision: number,
+  teamAGames: number,
+  teamBGames: number,
+): Promise<boolean> {
+  if (!isValidDoublesGames(teamAGames) || !isValidDoublesGames(teamBGames)) {
+    throw new Error('取得ゲーム数は0～99の整数で指定してください。');
+  }
+  const ref = doc(db, 'doublesSchedules', eventId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) return false;
+    const schedule = snapshot.data() as DoublesSchedule;
+    if (schedule.generationId !== expectedGenerationId) return false;
+    const target = schedule.matches.find((match) => match.number === matchNumber);
+    if (!target || (target.scoreRevision ?? 0) !== expectedScoreRevision) return false;
+    const matches = schedule.matches.map((match) => (
+      match.number === matchNumber
+        ? {
+            ...match,
+            teamAGames,
+            teamBGames,
+            completed: true,
+            scoreRevision: (match.scoreRevision ?? 0) + 1,
+          }
+        : match
+    ));
     transaction.update(ref, {
       matches,
       revision: (schedule.revision ?? 0) + 1,

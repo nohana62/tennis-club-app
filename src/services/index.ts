@@ -58,6 +58,21 @@ export const setDoublesMatchCompleted = (
   matchNumber: number,
   completed: boolean,
 ): Promise<boolean> => svc.setDoublesMatchCompleted(eventId, expectedGenerationId, matchNumber, completed);
+export const saveDoublesMatchScore = (
+  eventId: string,
+  expectedGenerationId: string,
+  matchNumber: number,
+  expectedScoreRevision: number,
+  teamAGames: number,
+  teamBGames: number,
+): Promise<boolean> => svc.saveDoublesMatchScore(
+  eventId,
+  expectedGenerationId,
+  matchNumber,
+  expectedScoreRevision,
+  teamAGames,
+  teamBGames,
+);
 
 export const getExpenses   = (): Promise<Expense[]>                          => svc.getExpenses();
 export const addExpense    = (e: Omit<Expense, "id">): Promise<string>       => svc.addExpense(e);

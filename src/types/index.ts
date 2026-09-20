@@ -53,6 +53,9 @@ export interface StoredDoublesMatch {
   teamA: [StoredDoublesParticipant, StoredDoublesParticipant];
   teamB: [StoredDoublesParticipant, StoredDoublesParticipant];
   completed: boolean;
+  teamAGames?: number;
+  teamBGames?: number;
+  scoreRevision?: number;
 }
 
 export interface DoublesSchedule {

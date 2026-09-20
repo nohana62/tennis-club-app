@@ -13,6 +13,7 @@ import type {
   DoublesSchedule,
   StoredDoublesMatch,
 } from '../types';
+import { isValidDoublesGames } from '../utils/doublesResults';
 import { createGenerationId } from '../utils/ids';
 
 // メモリ内ストア（コピーして書き込み可能にする）
@@ -170,6 +171,38 @@ export async function setDoublesMatchCompleted(
   }
   schedule.matches = schedule.matches.map((match) => (
     match.number === matchNumber ? { ...match, completed } : match
+  ));
+  schedule.revision += 1;
+  schedule.updatedAt = new Date().toISOString();
+  notifyDoublesSchedule(eventId);
+  return true;
+}
+
+export async function saveDoublesMatchScore(
+  eventId: string,
+  expectedGenerationId: string,
+  matchNumber: number,
+  expectedScoreRevision: number,
+  teamAGames: number,
+  teamBGames: number,
+): Promise<boolean> {
+  if (!isValidDoublesGames(teamAGames) || !isValidDoublesGames(teamBGames)) {
+    throw new Error('取得ゲーム数は0～99の整数で指定してください。');
+  }
+  const schedule = doublesSchedules.get(eventId);
+  if (!schedule || schedule.generationId !== expectedGenerationId) return false;
+  const target = schedule.matches.find((match) => match.number === matchNumber);
+  if (!target || (target.scoreRevision ?? 0) !== expectedScoreRevision) return false;
+  schedule.matches = schedule.matches.map((match) => (
+    match.number === matchNumber
+      ? {
+          ...match,
+          teamAGames,
+          teamBGames,
+          completed: true,
+          scoreRevision: (match.scoreRevision ?? 0) + 1,
+        }
+      : match
   ));
   schedule.revision += 1;
   schedule.updatedAt = new Date().toISOString();
