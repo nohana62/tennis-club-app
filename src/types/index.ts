@@ -43,6 +43,28 @@ export interface Attendance {
   updatedAt?: string;
 }
 
+export interface StoredDoublesParticipant {
+  id: string;
+  name: string;
+}
+
+export interface StoredDoublesMatch {
+  number: number;
+  teamA: [StoredDoublesParticipant, StoredDoublesParticipant];
+  teamB: [StoredDoublesParticipant, StoredDoublesParticipant];
+  completed: boolean;
+}
+
+export interface DoublesSchedule {
+  eventId: string;
+  generationId: string;
+  revision: number;
+  matches: StoredDoublesMatch[];
+  participantCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ExpenseCategory = 'court' | 'ball' | 'equipment' | 'travel' | 'food' | 'other';
 
 export interface Expense {

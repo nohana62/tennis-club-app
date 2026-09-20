@@ -12,9 +12,12 @@ import {
   query,
   orderBy,
   Timestamp,
+  onSnapshot,
+  runTransaction,
   type Firestore,
 } from 'firebase/firestore';
-import type { ClubEvent, Member, Attendance, Expense, Post } from '../types';
+import type { ClubEvent, Member, Attendance, Expense, Post, DoublesSchedule, StoredDoublesMatch } from '../types';
+import { createGenerationId } from '../utils/ids';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -109,6 +112,104 @@ export async function updateAttendance(id: string, data: Partial<Attendance>): P
     ...data,
     updatedAt: Timestamp.now().toDate().toISOString(),
   } as Record<string, unknown>);
+}
+
+// ── Doubles schedules ───────────────────────────────
+
+export function subscribeDoublesSchedule(
+  eventId: string,
+  onData: (schedule: DoublesSchedule | null) => void,
+  onError: (error: Error) => void,
+): () => void {
+  return onSnapshot(
+    doc(db, 'doublesSchedules', eventId),
+    (snapshot) => {
+      onData(snapshot.exists() ? snapshot.data() as DoublesSchedule : null);
+    },
+    onError,
+  );
+}
+
+export async function createDoublesSchedule(
+  eventId: string,
+  matches: StoredDoublesMatch[],
+  participantCount: number,
+): Promise<boolean> {
+  const ref = doc(db, 'doublesSchedules', eventId);
+  const generationId = createGenerationId();
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (snapshot.exists()) return false;
+    const now = Timestamp.now().toDate().toISOString();
+    transaction.set(ref, {
+      eventId,
+      generationId,
+      revision: 0,
+      matches,
+      participantCount,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return true;
+  });
+}
+
+export async function replaceDoublesSchedule(
+  eventId: string,
+  expectedGenerationId: string,
+  expectedRevision: number,
+  matches: StoredDoublesMatch[],
+  participantCount: number,
+): Promise<boolean> {
+  const ref = doc(db, 'doublesSchedules', eventId);
+  const generationId = createGenerationId();
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) return false;
+    const current = snapshot.data() as DoublesSchedule;
+    if (
+      current.generationId !== expectedGenerationId
+      || current.revision !== expectedRevision
+    ) return false;
+    const now = Timestamp.now().toDate().toISOString();
+    transaction.set(ref, {
+      eventId,
+      generationId,
+      revision: 0,
+      matches,
+      participantCount,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return true;
+  });
+}
+
+export async function setDoublesMatchCompleted(
+  eventId: string,
+  expectedGenerationId: string,
+  matchNumber: number,
+  completed: boolean,
+): Promise<boolean> {
+  const ref = doc(db, 'doublesSchedules', eventId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) return false;
+    const schedule = snapshot.data() as DoublesSchedule;
+    if (schedule.generationId !== expectedGenerationId) return false;
+    const matches = schedule.matches.map((match) => (
+      match.number === matchNumber ? { ...match, completed } : match
+    ));
+    if (!matches.some((match) => match.number === matchNumber)) {
+      throw new Error('対象の試合が見つかりません。');
+    }
+    transaction.update(ref, {
+      matches,
+      revision: (schedule.revision ?? 0) + 1,
+      updatedAt: Timestamp.now().toDate().toISOString(),
+    });
+    return true;
+  });
 }
 
 // ── Expenses ─────────────────────────────────────────

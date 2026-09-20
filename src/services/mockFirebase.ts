@@ -4,13 +4,24 @@
  * データはページリロードでリセットされます。
  */
 import { MOCK_MEMBERS, MOCK_EVENTS, MOCK_ATTENDANCES, MOCK_EXPENSES } from './mockData';
-import type { ClubEvent, Member, Attendance, Expense, Post } from '../types';
+import type {
+  ClubEvent,
+  Member,
+  Attendance,
+  Expense,
+  Post,
+  DoublesSchedule,
+  StoredDoublesMatch,
+} from '../types';
+import { createGenerationId } from '../utils/ids';
 
 // メモリ内ストア（コピーして書き込み可能にする）
 let events: ClubEvent[] = structuredClone(MOCK_EVENTS);
 let members: Member[] = structuredClone(MOCK_MEMBERS);
 let attendances: Attendance[] = structuredClone(MOCK_ATTENDANCES);
 let expenses: Expense[] = structuredClone(MOCK_EXPENSES);
+const doublesSchedules = new Map<string, DoublesSchedule>();
+const doublesListeners = new Map<string, Set<(schedule: DoublesSchedule | null) => void>>();
 
 let nextId = 100;
 const genId = () => `mock-${nextId++}`;
@@ -72,6 +83,98 @@ export async function updateAttendance(id: string, data: Partial<Attendance>): P
   attendances = attendances.map((a) =>
     a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a
   );
+}
+
+// ── Doubles schedules ───────────────────────────────
+
+function notifyDoublesSchedule(eventId: string): void {
+  const schedule = doublesSchedules.get(eventId);
+  doublesListeners.get(eventId)?.forEach((listener) => {
+    listener(schedule ? structuredClone(schedule) : null);
+  });
+}
+
+export function subscribeDoublesSchedule(
+  eventId: string,
+  onData: (schedule: DoublesSchedule | null) => void,
+  _onError: (error: Error) => void,
+): () => void {
+  const listeners = doublesListeners.get(eventId) ?? new Set();
+  listeners.add(onData);
+  doublesListeners.set(eventId, listeners);
+  const schedule = doublesSchedules.get(eventId);
+  onData(schedule ? structuredClone(schedule) : null);
+  return () => {
+    listeners.delete(onData);
+    if (listeners.size === 0) doublesListeners.delete(eventId);
+  };
+}
+
+export async function createDoublesSchedule(
+  eventId: string,
+  matches: StoredDoublesMatch[],
+  participantCount: number,
+): Promise<boolean> {
+  if (doublesSchedules.has(eventId)) return false;
+  const now = new Date().toISOString();
+  doublesSchedules.set(eventId, {
+    eventId,
+    generationId: createGenerationId(),
+    revision: 0,
+    matches: structuredClone(matches),
+    participantCount,
+    createdAt: now,
+    updatedAt: now,
+  });
+  notifyDoublesSchedule(eventId);
+  return true;
+}
+
+export async function replaceDoublesSchedule(
+  eventId: string,
+  expectedGenerationId: string,
+  expectedRevision: number,
+  matches: StoredDoublesMatch[],
+  participantCount: number,
+): Promise<boolean> {
+  const current = doublesSchedules.get(eventId);
+  if (
+    !current
+    || current.generationId !== expectedGenerationId
+    || current.revision !== expectedRevision
+  ) return false;
+  const now = new Date().toISOString();
+  doublesSchedules.set(eventId, {
+    eventId,
+    generationId: createGenerationId(),
+    revision: 0,
+    matches: structuredClone(matches),
+    participantCount,
+    createdAt: now,
+    updatedAt: now,
+  });
+  notifyDoublesSchedule(eventId);
+  return true;
+}
+
+export async function setDoublesMatchCompleted(
+  eventId: string,
+  expectedGenerationId: string,
+  matchNumber: number,
+  completed: boolean,
+): Promise<boolean> {
+  const schedule = doublesSchedules.get(eventId);
+  if (!schedule || schedule.generationId !== expectedGenerationId) return false;
+  if (!schedule.matches.some((match) => match.number === matchNumber)) {
+    throw new Error('対象の試合が見つかりません。');
+  }
+  schedule.matches = schedule.matches.map((match) => (
+    match.number === matchNumber ? { ...match, completed } : match
+  ));
+  schedule.revision += 1;
+  schedule.updatedAt = new Date().toISOString();
+  notifyDoublesSchedule(eventId);
+  return true;
 }
 
 // ── Expenses ─────────────────────────────────────────

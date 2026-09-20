@@ -2,7 +2,7 @@
  * データサービスのエントリーポイント
  * VITE_DEMO_MODE=true またはFirebase未設定 の場合はモックデータを使用
  */
-import type { ClubEvent, Member, Attendance, Expense, Post } from "../types";
+import type { ClubEvent, Member, Attendance, Expense, Post, DoublesSchedule, StoredDoublesMatch } from "../types";
 import type { AppConfig } from "./firebase";
 
 import * as mock from "./mockFirebase";
@@ -28,6 +28,36 @@ export const deleteMember = (id: string): Promise<void>                       =>
 export const getAttendances  = (): Promise<Attendance[]>                           => svc.getAttendances();
 export const setAttendance   = (a: Omit<Attendance, "id">): Promise<string>        => svc.setAttendance(a);
 export const updateAttendance= (id: string, a: Partial<Attendance>): Promise<void> => svc.updateAttendance(id, a);
+
+export const subscribeDoublesSchedule = (
+  eventId: string,
+  onData: (schedule: DoublesSchedule | null) => void,
+  onError: (error: Error) => void,
+): (() => void) => svc.subscribeDoublesSchedule(eventId, onData, onError);
+export const createDoublesSchedule = (
+  eventId: string,
+  matches: StoredDoublesMatch[],
+  participantCount: number,
+): Promise<boolean> => svc.createDoublesSchedule(eventId, matches, participantCount);
+export const replaceDoublesSchedule = (
+  eventId: string,
+  expectedGenerationId: string,
+  expectedRevision: number,
+  matches: StoredDoublesMatch[],
+  participantCount: number,
+): Promise<boolean> => svc.replaceDoublesSchedule(
+  eventId,
+  expectedGenerationId,
+  expectedRevision,
+  matches,
+  participantCount,
+);
+export const setDoublesMatchCompleted = (
+  eventId: string,
+  expectedGenerationId: string,
+  matchNumber: number,
+  completed: boolean,
+): Promise<boolean> => svc.setDoublesMatchCompleted(eventId, expectedGenerationId, matchNumber, completed);
 
 export const getExpenses   = (): Promise<Expense[]>                          => svc.getExpenses();
 export const addExpense    = (e: Omit<Expense, "id">): Promise<string>       => svc.addExpense(e);
