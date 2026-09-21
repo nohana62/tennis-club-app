@@ -17,6 +17,7 @@
     "admin:approve-account-request": "node scripts/admin/approve-account-request.mjs",
     "test:backup": "node --test scripts/backup-firestore.test.mjs",
     "test:admin": "node --test scripts/admin/*.test.mjs",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run scripts/firestore-rules.test.ts\"",
     "test": "vitest run src && npm run test:backup && npm run test:admin"
   },
   "dependencies": {
@@ -37,11 +38,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "firebase-admin": "^14.4.0",
+    "firebase-tools": "^14.22.0",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
