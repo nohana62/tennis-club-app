@@ -1,4 +1,5 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { updatePassword, type User } from 'firebase/auth';
 import type { AppUser, Membership, Organization } from '../types';
 import { db } from './firebase';
 
@@ -29,4 +30,15 @@ export async function resolveUserOrganization(uid: string) {
   }
 
   return { user, organization, membership };
+}
+
+export async function completeRequiredPasswordChange(
+  user: User,
+  newPassword: string,
+): Promise<void> {
+  await updatePassword(user, newPassword);
+  await updateDoc(doc(db, 'users', user.uid), {
+    passwordChangeRequired: false,
+    updatedAt: serverTimestamp(),
+  });
 }

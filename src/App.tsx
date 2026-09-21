@@ -10,6 +10,7 @@ import DoublesPage from "./pages/Doubles/DoublesPage";
 import MorePage from "./pages/More/MorePage";
 import RainRankingPage from "./pages/More/RainRankingPage";
 import LoginPage from "./pages/Auth/LoginPage";
+import PasswordChangePage from "./pages/Auth/PasswordChangePage";
 import { AuthProvider } from "./contexts/AuthContext";
 import { IS_DEMO, useAuth } from "./contexts/auth";
 import { OrganizationProvider } from "./contexts/OrganizationContext";
@@ -31,12 +32,16 @@ function AuthenticatedApp() {
     return <LoginPage />;
   }
 
-  if (!IS_DEMO && organizationState.loading) {
+  if (!IS_DEMO && organizationState.error) {
+    return <div className="min-h-screen flex items-center justify-center p-4 text-red-700">{organizationState.error}</div>;
+  }
+
+  if (!IS_DEMO && (organizationState.loading || !organizationState.userProfile)) {
     return <div className="min-h-screen flex items-center justify-center">所属団体を確認しています...</div>;
   }
 
-  if (!IS_DEMO && organizationState.error) {
-    return <div className="min-h-screen flex items-center justify-center p-4 text-red-700">{organizationState.error}</div>;
+  if (!IS_DEMO && organizationState.userProfile?.passwordChangeRequired) {
+    return <PasswordChangePage />;
   }
 
   return (

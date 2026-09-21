@@ -13,7 +13,8 @@
     "backup:verify": "node scripts/verify-firestore-backup.mjs",
     "admin:check": "node scripts/admin/check.mjs",
     "admin:create-organization": "node scripts/admin/create-organization.mjs",
-    "test:backup": "node --test scripts/backup-firestore.test.mjs"
+    "test:backup": "node --test scripts/backup-firestore.test.mjs",
+    "test": "vitest run src && npm run test:backup"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -40,6 +41,7 @@
     "firebase-admin": "^14.4.0",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^3.2.4"
   }
 }

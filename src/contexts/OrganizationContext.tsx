@@ -1,6 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AppUser, Membership, Organization } from '../types';
-import { resolveUserOrganization } from '../services/organization';
+import {
+  completeRequiredPasswordChange,
+  resolveUserOrganization,
+} from '../services/organization';
 import { IS_DEMO, useAuth } from './auth';
 import { OrganizationContext } from './organization';
 
@@ -14,6 +17,11 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (IS_DEMO || !user) {
+      setUserProfile(null);
+      setOrganization(null);
+      setMembership(null);
+      setLoading(false);
+      setError('');
       return;
     }
     let active = true;
@@ -38,9 +46,26 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
+  const completePasswordChange = async (newPassword: string) => {
+    if (!user || !userProfile) {
+      throw new Error('user-profile-not-loaded');
+    }
+    await completeRequiredPasswordChange(user, newPassword);
+    setUserProfile((current) => (
+      current ? { ...current, passwordChangeRequired: false } : current
+    ));
+  };
+
   return (
     <OrganizationContext.Provider
-      value={{ userProfile, organization, membership, loading, error }}
+      value={{
+        userProfile,
+        organization,
+        membership,
+        loading,
+        error,
+        completePasswordChange,
+      }}
     >
       {children}
     </OrganizationContext.Provider>

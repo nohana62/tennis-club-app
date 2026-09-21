@@ -7,6 +7,7 @@ export interface OrganizationContextValue {
   membership: Membership | null;
   loading: boolean;
   error: string;
+  completePasswordChange: (newPassword: string) => Promise<void>;
 }
 
 export const OrganizationContext =
