@@ -28,6 +28,11 @@ service cloud.firestore {
       return isActiveUser()
         && get(organizationPath(organizationId)).data.status == 'active'
         && get(membershipPath(organizationId)).data.status == 'active'
+        && (get(membershipPath(organizationId)).data.role in ['owner', 'admin']
+          || (get(membershipPath(organizationId)).data.memberId is string
+            && exists(
+              /databases/$(database)/documents/organizations/$(organizationId)/members/$(get(membershipPath(organizationId)).data.memberId)
+            )))
         && get(userPath()).data.defaultOrganizationId == organizationId;
     }
 

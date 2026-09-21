@@ -133,6 +133,20 @@ describe('Firestore tenant rules', () => {
     await assertFails(getDoc(doc(suspended, 'organizations/club-a/events/event-a')));
   });
 
+  test('revokes member access when the linked member record is missing', async () => {
+    const forced = environment.authenticatedContext('forced-a').firestore();
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users/forced-a'), {
+        loginId: 'forced-a',
+        displayName: 'Forced A',
+        defaultOrganizationId: 'club-a',
+        status: 'active',
+        passwordChangeRequired: false,
+      });
+    });
+    await assertFails(getDoc(doc(forced, 'organizations/club-a/events/event-a')));
+  });
+
   test('enforces role-specific writes', async () => {
     const admin = environment.authenticatedContext('admin-a').firestore();
     const member = environment.authenticatedContext('member-a').firestore();

@@ -51,9 +51,10 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       throw new Error('user-profile-not-loaded');
     }
     await completeRequiredPasswordChange(user, newPassword);
-    setUserProfile((current) => (
-      current ? { ...current, passwordChangeRequired: false } : current
-    ));
+    const result = await resolveUserOrganization(user.uid);
+    setUserProfile(result.user);
+    setOrganization(result.organization);
+    setMembership(result.membership);
   };
 
   return (
