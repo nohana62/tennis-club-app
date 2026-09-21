@@ -1,8 +1,7 @@
-import { doc, getDoc } from 'firebase/firestore';
-import type { User } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { updatePassword, type User } from 'firebase/auth';
 import type { AppUser, Membership, Organization } from '../types';
-import { db, functions } from './firebase';
+import { db } from './firebase';
 
 export async function resolveUserOrganization(uid: string) {
   const userSnapshot = await getDoc(doc(db, 'users', uid));
@@ -48,20 +47,9 @@ export async function completeRequiredPasswordChange(
   user: User,
   newPassword: string,
 ): Promise<void> {
-  const completePasswordChange = httpsCallable<
-    { newPassword: string },
-    { completed: true }
-  >(functions, 'completeRequiredPasswordChange');
-  try {
-    await completePasswordChange({ newPassword });
-  } catch (error) {
-    if (
-      !(error instanceof Error)
-      || !('code' in error)
-      || error.code !== 'functions/failed-precondition'
-    ) {
-      throw error;
-    }
-  }
-  await user.reload();
+  await updatePassword(user, newPassword);
+  await updateDoc(doc(db, 'users', user.uid), {
+    passwordChangeRequired: false,
+    updatedAt: serverTimestamp(),
+  });
 }

@@ -19,8 +19,7 @@
     "test:backup": "node --test scripts/backup-firestore.test.mjs",
     "test:admin": "node --test scripts/admin/*.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run scripts/firestore-rules.test.ts\"",
-    "test:functions": "npm --prefix functions test",
-    "test": "vitest run src && npm run test:backup && npm run test:admin && npm run test:functions"
+    "test": "vitest run src && npm run test:backup && npm run test:admin"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

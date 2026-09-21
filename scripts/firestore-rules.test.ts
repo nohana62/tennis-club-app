@@ -114,10 +114,11 @@ describe('Firestore tenant rules', () => {
     await assertSucceeds(getDoc(doc(forcedDb, 'users/forced-a')));
     await assertFails(getDoc(doc(forcedDb, 'users/member-a')));
     await assertFails(getDoc(doc(forcedDb, 'organizations/club-a/events/event-a')));
-    await assertFails(updateDoc(doc(forcedDb, 'users/forced-a'), {
+    await assertSucceeds(updateDoc(doc(forcedDb, 'users/forced-a'), {
       passwordChangeRequired: false,
       updatedAt: serverTimestamp(),
     }));
+    await assertSucceeds(getDoc(doc(forcedDb, 'organizations/club-a/events/event-a')));
     await assertFails(updateDoc(doc(forcedDb, 'users/forced-a'), {
       defaultOrganizationId: 'club-b',
     }));
