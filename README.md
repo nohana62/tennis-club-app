@@ -80,6 +80,12 @@ npm.cmd run backup -- --project=tennis-club-app-cb7d2
 
 成功すると、`backups`フォルダへ日時付きJSONとSHA-256ファイルが作成されます。バックアップには個人情報や`settings/appConfig`の通知資格情報が含まれる可能性があるため、会社管理の暗号化済み保存先で保管してください。
 
+5. 最新バックアップの形式、件数、SHA-256を確認します。
+
+```powershell
+npm.cmd run backup:verify
+```
+
 このバックアップにはFirebase Authentication、Firestore Security Rules、Indexes、App Check設定は含まれません。
 
 ## PWA インストール方法

@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   BACKUP_FORMAT_VERSION,
+  COLLECTION_NAMES,
   EXPECTED_PROJECT_ID,
   assertSensitivePathsIgnored,
   parseArguments,
@@ -14,6 +15,7 @@ import {
   validateFirebaseConfig,
   writeBackupFiles,
 } from './backup-firestore.mjs';
+import { verifyBackupFile } from './verify-firestore-backup.mjs';
 
 const validConfig = {
   VITE_FIREBASE_API_KEY: 'test-api-key',
@@ -203,4 +205,34 @@ test('the backup script does not reference Firestore write APIs', async () => {
   );
 
   assert.doesNotMatch(source, writeApiPattern);
+});
+
+test('verifies the checksum, project, collections, and counts', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'tennis-verify-test-'));
+  const createdAt = new Date('2026-09-21T04:00:00.000Z');
+  const collections = Object.fromEntries(
+    COLLECTION_NAMES.map((name) => [
+      name,
+      { count: 0, documents: [] },
+    ]),
+  );
+  const backup = {
+    formatVersion: BACKUP_FORMAT_VERSION,
+    createdAt: createdAt.toISOString(),
+    projectId: EXPECTED_PROJECT_ID,
+    totalCount: 0,
+    collections,
+  };
+
+  try {
+    const output = await writeBackupFiles({ backup, cwd, createdAt });
+    const result = await verifyBackupFile(output.finalPath);
+    assert.equal(result.projectId, EXPECTED_PROJECT_ID);
+    assert.equal(result.totalCount, 0);
+
+    await writeFile(output.finalPath, '{}\n', 'utf8');
+    await assert.rejects(verifyBackupFile(output.finalPath), /SHA-256/u);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
 });

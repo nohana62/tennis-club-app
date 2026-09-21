@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "backup:check": "node scripts/backup-firestore.mjs --check-only --project=tennis-club-app-cb7d2",
     "backup": "node scripts/backup-firestore.mjs",
+    "backup:verify": "node scripts/verify-firestore-backup.mjs",
     "test:backup": "node --test scripts/backup-firestore.test.mjs"
   },
   "dependencies": {
