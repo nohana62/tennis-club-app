@@ -16,6 +16,20 @@ export function validateId(value, label) {
   return normalized;
 }
 
+export function validateDocumentId(value, label) {
+  const documentId = String(value ?? '');
+  if (
+    !documentId
+    || documentId.length > 1500
+    || documentId.includes('/')
+    || documentId === '.'
+    || documentId === '..'
+  ) {
+    throw new Error(`${label}が不正です。`);
+  }
+  return documentId;
+}
+
 export function createInternalEmail(loginId) {
   return `${validateId(loginId, 'ユーザーID')}@login.tennis-club.invalid`;
 }
@@ -42,6 +56,6 @@ export function validateAccountRequest(request, expectedLoginId) {
   if (request.role !== 'member') {
     throw new Error('申請文書のroleはmemberである必要があります。');
   }
-  const memberId = validateId(String(request.memberId ?? ''), '部員ID');
+  const memberId = validateDocumentId(request.memberId, '部員ID');
   return { loginId, displayName, role: 'member', memberId };
 }

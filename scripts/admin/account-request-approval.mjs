@@ -55,7 +55,7 @@ export async function approveAccountRequest({
     ]);
     const request = requestSnapshot.data();
     const login = loginIdSnapshot.data();
-    if (request?.status !== 'approving') return null;
+    if (!['approving', 'recovering'].includes(request?.status)) return null;
     if (
       login?.status !== 'reserved'
       || login.organizationId !== organizationId
@@ -63,6 +63,12 @@ export async function approveAccountRequest({
       || !login.uid
     ) {
       throw new Error('申請とユーザーID予約の状態が不整合です。手動確認が必要です。');
+    }
+    if (recoverInterrupted) {
+      transaction.update(requestRef, {
+        status: 'recovering',
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
     return { uid: login.uid, approvalToken: login.approvalToken };
   });
@@ -86,7 +92,7 @@ export async function approveAccountRequest({
         transaction.get(loginIdRef),
       ]);
       if (
-        requestSnapshot.data()?.status !== 'approving'
+        requestSnapshot.data()?.status !== 'recovering'
         || requestSnapshot.data()?.approvalToken !== interrupted.approvalToken
         || loginIdSnapshot.data()?.approvalToken !== interrupted.approvalToken
       ) {
@@ -146,37 +152,50 @@ export async function approveAccountRequest({
       disabled: false,
     });
 
-    const batch = db.batch();
-    batch.create(db.doc(`users/${uid}`), {
-      loginId,
-      displayName: requestDetails.displayName,
-      defaultOrganizationId: organizationId,
-      status: 'active',
-      passwordChangeRequired: true,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+    await db.runTransaction(async (transaction) => {
+      const [loginIdSnapshot, requestSnapshot] = await Promise.all([
+        transaction.get(loginIdRef),
+        transaction.get(requestRef),
+      ]);
+      if (
+        loginIdSnapshot.data()?.status !== 'reserved'
+        || loginIdSnapshot.data()?.uid !== uid
+        || loginIdSnapshot.data()?.approvalToken !== approvalToken
+        || requestSnapshot.data()?.status !== 'approving'
+        || requestSnapshot.data()?.approvalToken !== approvalToken
+      ) {
+        throw new Error('承認状態が変更されたため確定できませんでした。');
+      }
+      transaction.create(db.doc(`users/${uid}`), {
+        loginId,
+        displayName: requestDetails.displayName,
+        defaultOrganizationId: organizationId,
+        status: 'active',
+        passwordChangeRequired: true,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.create(db.doc(`organizations/${organizationId}/memberships/${uid}`), {
+        role: 'member',
+        status: 'active',
+        memberId: requestDetails.memberId,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(loginIdRef, {
+        status: 'active',
+        updatedAt: FieldValue.serverTimestamp(),
+        approvalToken: FieldValue.delete(),
+      });
+      transaction.update(requestRef, {
+        status: 'approved',
+        approvedUid: uid,
+        approvedBy,
+        approvedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        approvalToken: FieldValue.delete(),
+      });
     });
-    batch.create(db.doc(`organizations/${organizationId}/memberships/${uid}`), {
-      role: 'member',
-      status: 'active',
-      memberId: requestDetails.memberId,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    batch.update(loginIdRef, {
-      status: 'active',
-      updatedAt: FieldValue.serverTimestamp(),
-      approvalToken: FieldValue.delete(),
-    });
-    batch.update(requestRef, {
-      status: 'approved',
-      approvedUid: uid,
-      approvedBy,
-      approvedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      approvalToken: FieldValue.delete(),
-    });
-    await batch.commit();
 
     return {
       organizationId,

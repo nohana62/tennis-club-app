@@ -25,18 +25,28 @@ class FakeDb {
   }
 
   async runTransaction(callback) {
+    const original = this.entries;
+    const staged = new Map(this.entries);
+    let finalApprovalWrite = false;
     const transaction = {
-      get: async (ref) => new FakeSnapshot(this.entries.get(ref.path)),
+      get: async (ref) => new FakeSnapshot(staged.get(ref.path)),
       create: (ref, value) => {
-        if (this.entries.has(ref.path)) throw new Error('already-exists');
-        this.entries.set(ref.path, value);
+        if (staged.has(ref.path)) throw new Error('already-exists');
+        staged.set(ref.path, value);
+        if (ref.path.startsWith('users/')) finalApprovalWrite = true;
       },
       update: (ref, value) => {
-        this.entries.set(ref.path, { ...this.entries.get(ref.path), ...value });
+        staged.set(ref.path, { ...staged.get(ref.path), ...value });
       },
-      delete: (ref) => this.entries.delete(ref.path),
+      delete: (ref) => staged.delete(ref.path),
     };
-    return callback(transaction);
+    const result = await callback(transaction);
+    if (this.failBatch && finalApprovalWrite) {
+      this.entries = original;
+      throw new Error('batch-failed');
+    }
+    this.entries = staged;
+    return result;
   }
 
   batch() {
@@ -61,11 +71,11 @@ function createPendingDb(failBatch = false) {
     'organizations/club-a/accountRequests/member-one': {
       loginId: 'member-one',
       displayName: 'Member One',
-      memberId: 'member-record-one',
+      memberId: 'AbCdEfGhIjKlMnOpQrSt',
       role: 'member',
       status: 'pending',
     },
-    'organizations/club-a/members/member-record-one': { name: 'Member One' },
+    'organizations/club-a/members/AbCdEfGhIjKlMnOpQrSt': { name: 'Member One' },
   }, failBatch);
 }
 
@@ -73,20 +83,20 @@ test('validates safe member-only requests', () => {
   assert.deepEqual(validateAccountRequest({
     loginId: 'member-one',
     displayName: ' Member One ',
-    memberId: 'member-record-one',
+    memberId: 'AbCdEfGhIjKlMnOpQrSt',
     role: 'member',
     status: 'pending',
   }, 'member-one'), {
     loginId: 'member-one',
     displayName: 'Member One',
-    memberId: 'member-record-one',
+    memberId: 'AbCdEfGhIjKlMnOpQrSt',
     role: 'member',
   });
   assert.throws(
     () => validateAccountRequest({
       loginId: 'member-one',
       displayName: 'Member One',
-      memberId: 'member-record-one',
+      memberId: 'AbCdEfGhIjKlMnOpQrSt',
       role: 'owner',
       status: 'pending',
     }, 'member-one'),
@@ -119,7 +129,7 @@ test('approves a request exactly once and creates member records', async () => {
   );
   assert.equal(
     db.entries.get(`organizations/club-a/memberships/${result.uid}`).memberId,
-    'member-record-one',
+    'AbCdEfGhIjKlMnOpQrSt',
   );
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
@@ -198,5 +208,52 @@ test('retains the reservation when Auth rollback cannot be confirmed', async () 
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
     'approving',
+  );
+});
+
+test('requires an explicit recovery and claims it before replacing interrupted Auth', async () => {
+  const db = createPendingDb();
+  db.entries.set('organizations/club-a/accountRequests/member-one', {
+    ...db.entries.get('organizations/club-a/accountRequests/member-one'),
+    status: 'approving',
+    approvalToken: 'old-token',
+  });
+  db.entries.set('loginIds/member-one', {
+    status: 'reserved',
+    organizationId: 'club-a',
+    uid: 'old-uid',
+    approvalToken: 'old-token',
+  });
+  const deletedUsers = [];
+  const auth = {
+    createUser: async () => {},
+    getUser: async () => ({ uid: 'unused' }),
+    deleteUser: async (uid) => deletedUsers.push(uid),
+  };
+
+  await assert.rejects(
+    approveAccountRequest({
+      auth,
+      db,
+      organizationId: 'club-a',
+      loginId: 'member-one',
+      temporaryPassword: 'TemporaryPass123!',
+    }),
+    /--recover/,
+  );
+
+  const result = await approveAccountRequest({
+    auth,
+    db,
+    organizationId: 'club-a',
+    loginId: 'member-one',
+    temporaryPassword: 'TemporaryPass123!',
+    approvalToken: 'new-token',
+    recoverInterrupted: true,
+  });
+  assert.deepEqual(deletedUsers, ['old-uid']);
+  assert.equal(
+    db.entries.get('organizations/club-a/accountRequests/member-one').approvedUid,
+    result.uid,
   );
 });

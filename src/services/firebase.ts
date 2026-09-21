@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
+import { getFunctions, type Functions } from 'firebase/functions';
 import {
   getFirestore,
   collection,
@@ -32,10 +33,12 @@ const firebaseConfig = {
 
 export let db: Firestore;
 export let auth: Auth;
+export let functions: Functions;
 try {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   auth = getAuth(app);
+  functions = getFunctions(app, 'asia-northeast1');
 } catch (e) {
   console.error('Firebase 初期化エラー:', e);
   throw e;

@@ -52,7 +52,7 @@
 ## 複数団体とログイン
 
 - ログインには管理者が発行したユーザーIDと一時パスワードを使います。
-- `users/{uid}.passwordChangeRequired`が`true`の利用者は、通常画面より先に専用のパスワード変更画面が表示されます。
+- `users/{uid}.passwordChangeRequired`が`true`の利用者は、通常画面より先に専用のパスワード変更画面が表示されます。変更処理はstaging固定のCallable FunctionがFirebase Authとユーザー文書を更新し、クライアントからフラグだけを解除することはできません。
 - 通常データはすべて`organizations/{organizationId}/...`配下へ保存されます。団体IDが未解決の状態でルートコレクションへフォールバックしません。
 - owner/adminは設定画面から既存の部員に紐づく一般利用者アカウントを申請できます。申請にパスワードは保存されず、roleは常に`member`です。
 - memberは閲覧、自分の出欠、掲示板投稿が中心です。管理データの変更はowner/adminに限定されます。
@@ -114,7 +114,7 @@ npm.cmd run admin:migrate-root-data -- --organization=<団体ID> --apply --confi
 
 ### Firestore Security Rules
 
-`firestore.rules`は団体分離、active状態、role、本人ユーザー文書、
+`firestore.rules`は団体分離、active状態、初回パスワード変更状態、role、本人ユーザー文書、
 アカウント申請、ユーザーID予約のクライアント拒否を強制します。
 RulesテストにはJava 21以上が必要です。
 
@@ -125,7 +125,7 @@ npm.cmd run test:rules
 stagingへの反映前は必ずdry-runし、対象プロジェクト名を目視確認します。
 
 ```powershell
-.\node_modules\.bin\firebase.cmd deploy --only firestore:rules --project tennis-club-app-staging --dry-run
+.\node_modules\.bin\firebase.cmd deploy --only firestore:rules,functions:completeRequiredPasswordChange --project tennis-club-app-staging --dry-run
 ```
 
 dry-runに成功した後、承認された作業時だけ同じコマンドから`--dry-run`を外します。
@@ -139,7 +139,7 @@ dry-runに成功した後、承認された作業時だけ同じコマンドか�
 4. `users`または`memberships`が`suspended`の利用者は団体データを読み書きできない。
 5. クライアントから`loginIds`を読み書きできない。
 6. owner/adminはmember固定のpending申請を作成・閲覧できるが、クライアントから承認できない。
-7. 利用者本人は初回パスワード変更時に`passwordChangeRequired`を`true`から`false`へ変更できるが、既定団体、status、roleは変更できない。
+7. `passwordChangeRequired=true`の利用者は団体データを利用できず、クライアントからフラグを解除できない。Callable Functionでパスワード変更が成功した場合だけ解除される。
 
 上記は`scripts/firestore-rules.test.ts`でも2団体とrole差を使って検証します。
 

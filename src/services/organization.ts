@@ -1,7 +1,8 @@
-import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { updatePassword, type User } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import type { User } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import type { AppUser, Membership, Organization } from '../types';
-import { db } from './firebase';
+import { db, functions } from './firebase';
 
 export async function resolveUserOrganization(uid: string) {
   const userSnapshot = await getDoc(doc(db, 'users', uid));
@@ -36,9 +37,10 @@ export async function completeRequiredPasswordChange(
   user: User,
   newPassword: string,
 ): Promise<void> {
-  await updatePassword(user, newPassword);
-  await updateDoc(doc(db, 'users', user.uid), {
-    passwordChangeRequired: false,
-    updatedAt: serverTimestamp(),
-  });
+  const completePasswordChange = httpsCallable<
+    { newPassword: string },
+    { completed: true }
+  >(functions, 'completeRequiredPasswordChange');
+  await completePasswordChange({ newPassword });
+  await user.reload();
 }
