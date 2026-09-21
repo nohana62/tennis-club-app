@@ -11,6 +11,8 @@
     "backup:check": "node scripts/backup-firestore.mjs --check-only --project=tennis-club-app-cb7d2",
     "backup": "node scripts/backup-firestore.mjs",
     "backup:verify": "node scripts/verify-firestore-backup.mjs",
+    "admin:check": "node scripts/admin/check.mjs",
+    "admin:create-organization": "node scripts/admin/create-organization.mjs",
     "test:backup": "node --test scripts/backup-firestore.test.mjs"
   },
   "dependencies": {
@@ -35,6 +37,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "firebase-admin": "^14.4.0",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"

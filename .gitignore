@@ -13,6 +13,8 @@ dist-ssr
 *.local
 backups/
 .env.backup.local
+service-account*.json
+firebase-admin*.json
 
 # Editor directories and files
 .vscode/*
