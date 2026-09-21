@@ -1,11 +1,8 @@
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 6;
 
 export function validatePassword(password) {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`新しいパスワードは${MIN_PASSWORD_LENGTH}文字以上で入力してください。`);
-  }
-  if (!/[a-z]/u.test(password) || !/[A-Z]/u.test(password) || !/\d/u.test(password)) {
-    throw new Error('英大文字・英小文字・数字をそれぞれ1文字以上含めてください。');
   }
 }
 

@@ -102,7 +102,7 @@ export default function PasswordChangePage() {
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              英大文字・英小文字・数字を含む{MIN_PASSWORD_LENGTH}文字以上
+              {MIN_PASSWORD_LENGTH}文字以上（文字種の制限はありません）
             </p>
           </div>
 

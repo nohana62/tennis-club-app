@@ -3,8 +3,9 @@ import { validateNewPassword } from './password';
 import { validateAccountRequestInput } from './loginIdentifier';
 
 describe('validateNewPassword', () => {
-  test('accepts a matching password with the required character classes', () => {
-    expect(validateNewPassword('SecurePass123', 'SecurePass123')).toBe('');
+  test('accepts any matching password with at least six characters', () => {
+    expect(validateNewPassword('123456', '123456')).toBe('');
+    expect(validateNewPassword('あいうえおか', 'あいうえおか')).toBe('');
   });
 
   describe('validateAccountRequestInput', () => {
@@ -33,10 +34,7 @@ describe('validateNewPassword', () => {
   });
 
   test.each([
-    ['Short1A', 'Short1A', '12文字以上'],
-    ['alllowercase123', 'alllowercase123', '英大文字'],
-    ['ALLUPPERCASE123', 'ALLUPPERCASE123', '英大文字'],
-    ['NoNumbersHere', 'NoNumbersHere', '英大文字'],
+    ['12345', '12345', '6文字以上'],
     ['SecurePass123', 'SecurePass124', '一致しません'],
   ])('rejects invalid input', (password, confirmation, expected) => {
     expect(validateNewPassword(password, confirmation)).toContain(expected);

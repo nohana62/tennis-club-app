@@ -35,7 +35,7 @@ export const completeRequiredPasswordChange = onCall(
       }
       if (
         error instanceof Error
-        && (error.message.includes('12文字') || error.message.includes('英大文字'))
+        && error.message.includes('6文字')
       ) {
         throw new HttpsError('invalid-argument', error.message);
       }

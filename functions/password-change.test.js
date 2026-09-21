@@ -3,9 +3,9 @@ import test from 'node:test';
 import { completePasswordChange, validatePassword } from './password-change.js';
 
 test('validates the server-side password policy', () => {
-  assert.doesNotThrow(() => validatePassword('SecurePass123'));
-  assert.throws(() => validatePassword('short1A'), /12文字/);
-  assert.throws(() => validatePassword('alllowercase123'), /英大文字/);
+  assert.doesNotThrow(() => validatePassword('123456'));
+  assert.doesNotThrow(() => validatePassword('あいうえおか'));
+  assert.throws(() => validatePassword('12345'), /6文字/);
 });
 
 test('updates Auth before clearing the required-change flag', async () => {
