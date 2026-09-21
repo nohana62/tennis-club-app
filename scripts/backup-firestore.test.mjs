@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
   BACKUP_FORMAT_VERSION,
   EXPECTED_PROJECT_ID,
+  assertSensitivePathsIgnored,
   parseArguments,
   parseEnvFile,
   serializeFirestoreValue,
@@ -124,6 +125,27 @@ test('writes a verified backup and never overwrites it', async () => {
     await assert.rejects(
       writeBackupFiles({ backup, cwd, createdAt }),
       /既に存在/u,
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('checks sensitive exclusions without requiring the Git command', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'tennis-ignore-test-'));
+
+  try {
+    await writeFile(
+      path.join(cwd, '.gitignore'),
+      'backups/\n.env.backup.local\n',
+      'utf8',
+    );
+    await assert.doesNotReject(assertSensitivePathsIgnored(cwd));
+
+    await writeFile(path.join(cwd, '.gitignore'), 'backups/\n', 'utf8');
+    await assert.rejects(
+      assertSensitivePathsIgnored(cwd),
+      /\.env\.backup\.local/u,
     );
   } finally {
     await rm(cwd, { recursive: true, force: true });

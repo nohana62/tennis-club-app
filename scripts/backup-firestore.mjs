@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import {
   access,
   constants,
@@ -268,24 +267,33 @@ async function pathExists(filePath) {
   }
 }
 
-function assertPathIsIgnored(cwd, relativePath) {
-  const result = spawnSync(
-    'git',
-    ['check-ignore', '--quiet', '--no-index', '--', relativePath],
-    {
-      cwd,
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  );
+export async function assertSensitivePathsIgnored(cwd) {
+  const gitignorePath = path.join(cwd, '.gitignore');
+  let contents;
 
-  if (result.error) {
-    throw new Error(`Git除外設定を確認できません: ${result.error.message}`);
+  try {
+    contents = await readFile(gitignorePath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error(
+        '.gitignoreがありません。機密ファイルの除外を確認できないため中止します。',
+      );
+    }
+    throw error;
   }
 
-  if (result.status !== 0) {
+  const rules = new Set(
+    contents
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#')),
+  );
+  const requiredRules = ['backups/', ENV_FILE_NAME];
+  const missingRules = requiredRules.filter((rule) => !rules.has(rule));
+
+  if (missingRules.length > 0) {
     throw new Error(
-      `${relativePath}がGit管理外になっていません。バックアップを中止します。`,
+      `.gitignoreに必要な設定がありません: ${missingRules.join(', ')}`,
     );
   }
 }
@@ -391,8 +399,7 @@ async function readCollections(db, firestoreApi) {
 
 export async function runBackup(args, cwd = process.cwd()) {
   const { projectId } = parseArguments(args);
-  assertPathIsIgnored(cwd, 'backups/probe.json');
-  assertPathIsIgnored(cwd, ENV_FILE_NAME);
+  await assertSensitivePathsIgnored(cwd);
   const firebaseConfig = await loadFirebaseConfig(cwd, projectId);
 
   console.log(`接続先: ${firebaseConfig.projectId}`);
