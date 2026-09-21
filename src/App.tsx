@@ -12,9 +12,12 @@ import RainRankingPage from "./pages/More/RainRankingPage";
 import LoginPage from "./pages/Auth/LoginPage";
 import { AuthProvider } from "./contexts/AuthContext";
 import { IS_DEMO, useAuth } from "./contexts/auth";
+import { OrganizationProvider } from "./contexts/OrganizationContext";
+import { useOrganization } from "./contexts/organization";
 
 function AuthenticatedApp() {
   const { user, loading } = useAuth();
+  const organizationState = useOrganization();
 
   if (loading) {
     return (
@@ -26,6 +29,14 @@ function AuthenticatedApp() {
 
   if (!IS_DEMO && !user) {
     return <LoginPage />;
+  }
+
+  if (!IS_DEMO && organizationState.loading) {
+    return <div className="min-h-screen flex items-center justify-center">所属団体を確認しています...</div>;
+  }
+
+  if (!IS_DEMO && organizationState.error) {
+    return <div className="min-h-screen flex items-center justify-center p-4 text-red-700">{organizationState.error}</div>;
   }
 
   return (
@@ -50,7 +61,9 @@ function AuthenticatedApp() {
 export default function App() {
   return (
     <AuthProvider>
-      <AuthenticatedApp />
+      <OrganizationProvider>
+        <AuthenticatedApp />
+      </OrganizationProvider>
     </AuthProvider>
   );
 }

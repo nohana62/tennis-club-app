@@ -30,7 +30,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-let db: Firestore;
+export let db: Firestore;
 export let auth: Auth;
 try {
   const app = initializeApp(firebaseConfig);

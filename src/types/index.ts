@@ -88,3 +88,28 @@ export interface Post {
   important: boolean;
   createdAt?: string;
 }
+
+export type OrganizationRole = 'owner' | 'admin' | 'member';
+export type AccountStatus = 'active' | 'suspended';
+
+export interface Organization {
+  id: string;
+  name: string;
+  status: AccountStatus;
+}
+
+export interface AppUser {
+  uid: string;
+  loginId: string;
+  displayName: string;
+  defaultOrganizationId: string;
+  status: AccountStatus;
+  passwordChangeRequired?: boolean;
+}
+
+export interface Membership {
+  uid: string;
+  role: OrganizationRole;
+  status: AccountStatus;
+  memberId?: string;
+}
