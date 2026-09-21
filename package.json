@@ -15,6 +15,7 @@
     "admin:create-organization": "node scripts/admin/create-organization.mjs",
     "admin:list-account-requests": "node scripts/admin/list-account-requests.mjs",
     "admin:approve-account-request": "node scripts/admin/approve-account-request.mjs",
+    "admin:migrate-root-data": "node scripts/admin/migrate-root-data.mjs",
     "test:backup": "node --test scripts/backup-firestore.test.mjs",
     "test:admin": "node --test scripts/admin/*.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run scripts/firestore-rules.test.ts\"",
