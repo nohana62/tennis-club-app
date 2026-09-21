@@ -113,3 +113,16 @@ export interface Membership {
   status: AccountStatus;
   memberId?: string;
 }
+
+export interface AccountRequest {
+  id: string;
+  loginId: string;
+  displayName: string;
+  role: 'member';
+  status: 'pending' | 'approved' | 'rejected';
+  requestedBy: string;
+  createdAt?: unknown;
+  approvedAt?: unknown;
+  approvedBy?: string;
+  approvedUid?: string;
+}

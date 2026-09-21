@@ -1,10 +1,14 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Save, Send, CheckCircle, AlertTriangle, ExternalLink, Eye, EyeOff, Lock, Loader2, Plus, X, Pencil, Trash2, GripVertical, Users } from 'lucide-react';
+import { Save, Send, CheckCircle, AlertTriangle, ExternalLink, Eye, EyeOff, Lock, Loader2, Plus, X, Pencil, Trash2, GripVertical, Users, UserPlus } from 'lucide-react';
 import { sendTeamsMessage } from '../../services/teams';
 import { sendLineMessage } from '../../services/line';
 import { getAppConfig, saveAppConfig, getMembers, addMember, updateMember, deleteMember } from '../../services/index';
 import type { AppConfig } from '../../services/index';
-import type { Member } from '../../types';
+import type { AccountRequest, Member } from '../../types';
+import { useAuth } from '../../contexts/auth';
+import { useOrganization } from '../../contexts/organization';
+import { createAccountRequest, getAccountRequests } from '../../services/accountRequests';
+import { validateAccountRequestInput } from '../../utils/loginIdentifier';
 
 const DEFAULT_CONFIG: AppConfig = {
   expensePassword: 'tennis123',
@@ -28,6 +32,8 @@ async function saveOrder(ordered: Member[]) {
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+  const { organization, membership } = useOrganization();
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -47,6 +53,12 @@ export default function SettingsPage() {
   const [showMemberForm, setShowMemberForm] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [memberForm, setMemberForm] = useState<Omit<Member, 'id'>>(EMPTY_MEMBER);
+  const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
+  const [requestLoginId, setRequestLoginId] = useState('');
+  const [requestDisplayName, setRequestDisplayName] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestMessage, setRequestMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const canRequestAccounts = membership?.role === 'owner' || membership?.role === 'admin';
 
   const dragIndex = useRef<number | null>(null);
   const dragOverIndex = useRef<number | null>(null);
@@ -54,10 +66,49 @@ export default function SettingsPage() {
   useEffect(() => {
     getAppConfig().then((c) => { setConfig(c); setLoading(false); });
     loadMembers();
-  }, []);
+    if (canRequestAccounts && organization) {
+      void loadAccountRequests(organization.id);
+    }
+  }, [canRequestAccounts, organization]);
 
   async function loadMembers() {
     setMembers(await getMembers());
+  }
+
+  async function loadAccountRequests(organizationId: string) {
+    setAccountRequests(await getAccountRequests(organizationId));
+  }
+
+  async function handleAccountRequestSubmit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!canRequestAccounts || !organization || !user) {
+      setRequestMessage({ type: 'error', text: 'この操作を行う権限がありません。' });
+      return;
+    }
+    try {
+      const input = validateAccountRequestInput(requestLoginId, requestDisplayName);
+      setRequestSubmitting(true);
+      setRequestMessage(null);
+      await createAccountRequest(organization.id, user.uid, input);
+      setRequestLoginId('');
+      setRequestDisplayName('');
+      setRequestMessage({ type: 'ok', text: '一般利用者アカウントを申請しました。' });
+      await loadAccountRequests(organization.id);
+    } catch (error) {
+      const duplicate = error instanceof Error
+        && (error.message === 'account-request-already-exists'
+          || ('code' in error && error.code === 'permission-denied'));
+      setRequestMessage({
+        type: 'error',
+        text: duplicate
+          ? 'このユーザーIDは申請済み、または予約済みです。'
+          : error instanceof Error
+            ? error.message
+            : '申請を保存できませんでした。',
+      });
+    } finally {
+      setRequestSubmitting(false);
+    }
   }
 
   async function handleMemberSubmit(ev: React.FormEvent) {
@@ -193,6 +244,93 @@ export default function SettingsPage() {
       <p className="text-sm text-gray-500 mb-6">
         設定はデータベースに保存され、全デバイスで共有されます。
       </p>
+
+      {canRequestAccounts && (
+        <section className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+              <UserPlus size={18} className="text-blue-700" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-800">一般利用者アカウント申請</h2>
+              <p className="text-xs text-gray-500">権限は安全な既定値「一般利用者」で申請されます</p>
+            </div>
+          </div>
+          <form onSubmit={handleAccountRequestSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">希望ユーザーID</label>
+              <input
+                required
+                value={requestLoginId}
+                onChange={(event) => {
+                  setRequestLoginId(event.target.value);
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                placeholder="例: yamada-taro"
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              />
+              <p className="text-xs text-gray-400 mt-1">小文字英数字とハイフンの3〜32文字</p>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">表示名</label>
+              <input
+                required
+                value={requestDisplayName}
+                onChange={(event) => {
+                  setRequestDisplayName(event.target.value);
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                maxLength={80}
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              パスワードは申請時に入力・保存しません。承認後に管理者が発行します。
+            </p>
+            {requestMessage && (
+              <p className={`text-sm rounded-lg p-3 ${
+                requestMessage.type === 'ok'
+                  ? 'text-green-700 bg-green-50'
+                  : 'text-red-600 bg-red-50'
+              }`}>
+                {requestMessage.text}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={requestSubmitting}
+              className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-60"
+            >
+              {requestSubmitting && <Loader2 size={16} className="animate-spin" />}
+              {requestSubmitting ? '申請中...' : 'アカウントを申請'}
+            </button>
+          </form>
+          {accountRequests.length > 0 && (
+            <div className="mt-5 border-t pt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">申請履歴</h3>
+              <div className="space-y-2">
+                {accountRequests.map((request) => (
+                  <div key={request.id} className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
+                    <div>
+                      <p className="font-medium text-gray-800">{request.displayName}</p>
+                      <p className="text-xs text-gray-500">{request.loginId}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      request.status === 'pending'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}>
+                      {request.status === 'pending' ? '承認待ち' : '承認済み'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── 部員管理 ── */}
       <section className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
