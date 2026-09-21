@@ -57,6 +57,7 @@ export default function SettingsPage() {
   const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
   const [requestLoginId, setRequestLoginId] = useState('');
   const [requestDisplayName, setRequestDisplayName] = useState('');
+  const [requestMemberId, setRequestMemberId] = useState('');
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestMessage, setRequestMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
   const canManageSettings = IS_DEMO
@@ -94,12 +95,17 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const input = validateAccountRequestInput(requestLoginId, requestDisplayName);
+      const input = validateAccountRequestInput(
+        requestLoginId,
+        requestDisplayName,
+        requestMemberId,
+      );
       setRequestSubmitting(true);
       setRequestMessage(null);
       await createAccountRequest(organizationId, user.uid, input);
       setRequestLoginId('');
       setRequestDisplayName('');
+      setRequestMemberId('');
       setRequestMessage({ type: 'ok', text: '一般利用者アカウントを申請しました。' });
       await loadAccountRequests(organizationId);
     } catch (error) {
@@ -275,6 +281,27 @@ export default function SettingsPage() {
             </div>
           </div>
           <form onSubmit={handleAccountRequestSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">紐付ける部員</label>
+              <select
+                required
+                value={requestMemberId}
+                onChange={(event) => {
+                  const memberId = event.target.value;
+                  const selected = members.find((member) => member.id === memberId);
+                  setRequestMemberId(memberId);
+                  if (selected) setRequestDisplayName(selected.name);
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              >
+                <option value="">部員を選択してください</option>
+                {members.filter((member) => member.id).map((member) => (
+                  <option key={member.id} value={member.id}>{member.name}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">希望ユーザーID</label>
               <input

@@ -9,21 +9,26 @@ describe('validateNewPassword', () => {
 
   describe('validateAccountRequestInput', () => {
     test('normalizes a valid login ID and display name', () => {
-      expect(validateAccountRequestInput('  New-Member ', '　山田 太郎　')).toEqual({
+      expect(validateAccountRequestInput('  New-Member ', '　山田 太郎　', 'member-1')).toEqual({
         loginId: 'new-member',
         displayName: '山田 太郎',
+        memberId: 'member-1',
       });
     });
 
     test.each(['ab', 'invalid_id', '-invalid', 'invalid-'])(
       'rejects invalid login ID %s',
       (loginId) => {
-        expect(() => validateAccountRequestInput(loginId, '利用者')).toThrow('3〜32文字');
+        expect(() => validateAccountRequestInput(loginId, '利用者', 'member-1')).toThrow('3〜32文字');
       },
     );
 
     test('rejects an empty display name', () => {
-      expect(() => validateAccountRequestInput('valid-id', '　')).toThrow('表示名');
+      expect(() => validateAccountRequestInput('valid-id', '　', 'member-1')).toThrow('表示名');
+    });
+
+    test('requires a member link', () => {
+      expect(() => validateAccountRequestInput('valid-id', '利用者', '')).toThrow('部員');
     });
   });
 

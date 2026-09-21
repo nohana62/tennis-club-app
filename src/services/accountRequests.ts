@@ -27,11 +27,12 @@ export async function getAccountRequests(
 export async function createAccountRequest(
   organizationId: OrganizationId,
   requestedBy: string,
-  input: { loginId: string; displayName: string },
+  input: { loginId: string; displayName: string; memberId: string },
 ): Promise<void> {
-  const { loginId, displayName } = validateAccountRequestInput(
+  const { loginId, displayName, memberId } = validateAccountRequestInput(
     input.loginId,
     input.displayName,
+    input.memberId,
   );
   const requestRef = doc(
     db,
@@ -52,6 +53,7 @@ export async function createAccountRequest(
       role: 'member',
       status: 'pending',
       requestedBy,
+      memberId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

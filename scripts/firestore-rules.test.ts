@@ -35,6 +35,13 @@ beforeAll(async () => {
         displayName: 'Owner A',
         defaultOrganizationId: 'club-a',
         status: 'active',
+        passwordChangeRequired: false,
+      }],
+      ['users/forced-a', {
+        loginId: 'forced-a',
+        displayName: 'Forced A',
+        defaultOrganizationId: 'club-a',
+        status: 'active',
         passwordChangeRequired: true,
       }],
       ['users/admin-a', {
@@ -68,6 +75,7 @@ beforeAll(async () => {
       ['organizations/club-a', { name: 'Club A', status: 'active' }],
       ['organizations/club-b', { name: 'Club B', status: 'active' }],
       ['organizations/club-a/memberships/owner-a', { role: 'owner', status: 'active' }],
+      ['organizations/club-a/memberships/forced-a', { role: 'member', status: 'active' }],
       ['organizations/club-a/memberships/admin-a', { role: 'admin', status: 'active' }],
       ['organizations/club-a/memberships/member-a', {
         role: 'member',
@@ -81,6 +89,7 @@ beforeAll(async () => {
       }],
       ['organizations/club-b/memberships/owner-b', { role: 'owner', status: 'active' }],
       ['organizations/club-a/events/event-a', { title: 'A' }],
+      ['organizations/club-a/members/member-record-a', { name: 'Member A' }],
       ['organizations/club-b/events/event-b', { title: 'B' }],
       ['organizations/club-a/posts/post-a', {
         authorName: 'Member A',
@@ -101,14 +110,16 @@ afterAll(async () => {
 
 describe('Firestore tenant rules', () => {
   test('allows only the signed-in user to read and safely clear the password flag', async () => {
-    const ownerDb = environment.authenticatedContext('owner-a').firestore();
-    await assertSucceeds(getDoc(doc(ownerDb, 'users/owner-a')));
-    await assertFails(getDoc(doc(ownerDb, 'users/member-a')));
-    await assertSucceeds(updateDoc(doc(ownerDb, 'users/owner-a'), {
+    const forcedDb = environment.authenticatedContext('forced-a').firestore();
+    await assertSucceeds(getDoc(doc(forcedDb, 'users/forced-a')));
+    await assertFails(getDoc(doc(forcedDb, 'users/member-a')));
+    await assertFails(getDoc(doc(forcedDb, 'organizations/club-a/events/event-a')));
+    await assertSucceeds(updateDoc(doc(forcedDb, 'users/forced-a'), {
       passwordChangeRequired: false,
       updatedAt: serverTimestamp(),
     }));
-    await assertFails(updateDoc(doc(ownerDb, 'users/owner-a'), {
+    await assertSucceeds(getDoc(doc(forcedDb, 'organizations/club-a/events/event-a')));
+    await assertFails(updateDoc(doc(forcedDb, 'users/forced-a'), {
       defaultOrganizationId: 'club-b',
     }));
   });
@@ -155,6 +166,7 @@ describe('Firestore tenant rules', () => {
       role: 'member',
       status: 'pending',
       requestedBy: 'owner-a',
+      memberId: 'member-record-a',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };

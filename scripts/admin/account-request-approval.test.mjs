@@ -61,9 +61,11 @@ function createPendingDb(failBatch = false) {
     'organizations/club-a/accountRequests/member-one': {
       loginId: 'member-one',
       displayName: 'Member One',
+      memberId: 'member-record-one',
       role: 'member',
       status: 'pending',
     },
+    'organizations/club-a/members/member-record-one': { name: 'Member One' },
   }, failBatch);
 }
 
@@ -71,17 +73,20 @@ test('validates safe member-only requests', () => {
   assert.deepEqual(validateAccountRequest({
     loginId: 'member-one',
     displayName: ' Member One ',
+    memberId: 'member-record-one',
     role: 'member',
     status: 'pending',
   }, 'member-one'), {
     loginId: 'member-one',
     displayName: 'Member One',
+    memberId: 'member-record-one',
     role: 'member',
   });
   assert.throws(
     () => validateAccountRequest({
       loginId: 'member-one',
       displayName: 'Member One',
+      memberId: 'member-record-one',
       role: 'owner',
       status: 'pending',
     }, 'member-one'),
@@ -94,6 +99,7 @@ test('approves a request exactly once and creates member records', async () => {
   const createdUsers = [];
   const auth = {
     createUser: async (user) => createdUsers.push(user),
+    getUser: async () => assert.fail('must not roll back a successful approval'),
     deleteUser: async () => assert.fail('must not roll back a successful approval'),
   };
   const result = await approveAccountRequest({
@@ -110,6 +116,10 @@ test('approves a request exactly once and creates member records', async () => {
   assert.equal(
     db.entries.get(`organizations/club-a/memberships/${result.uid}`).role,
     'member',
+  );
+  assert.equal(
+    db.entries.get(`organizations/club-a/memberships/${result.uid}`).memberId,
+    'member-record-one',
   );
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
@@ -130,8 +140,19 @@ test('approves a request exactly once and creates member records', async () => {
 test('rolls back Auth and the reservation when the final batch fails', async () => {
   const db = createPendingDb(true);
   const deletedUsers = [];
+  let createdUid;
   const auth = {
-    createUser: async () => {},
+    createUser: async (user) => {
+      createdUid = user.uid;
+    },
+    getUser: async (uid) => {
+      if (uid !== createdUid) {
+        const error = new Error('not-found');
+        error.code = 'auth/user-not-found';
+        throw error;
+      }
+      return { uid };
+    },
     deleteUser: async (uid) => deletedUsers.push(uid),
   };
   await assert.rejects(
@@ -150,5 +171,32 @@ test('rolls back Auth and the reservation when the final batch fails', async () 
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
     'pending',
+  );
+});
+
+test('retains the reservation when Auth rollback cannot be confirmed', async () => {
+  const db = createPendingDb(true);
+  const auth = {
+    createUser: async () => {},
+    getUser: async () => ({ uid: 'created-user' }),
+    deleteUser: async () => {
+      throw new Error('auth-delete-failed');
+    },
+  };
+  await assert.rejects(
+    approveAccountRequest({
+      auth,
+      db,
+      organizationId: 'club-a',
+      loginId: 'member-one',
+      temporaryPassword: 'TemporaryPass123!',
+      approvalToken: 'approval-retained',
+    }),
+    /予約を保持/,
+  );
+  assert.equal(db.entries.get('loginIds/member-one').status, 'reserved');
+  assert.equal(
+    db.entries.get('organizations/club-a/accountRequests/member-one').status,
+    'approving',
   );
 });

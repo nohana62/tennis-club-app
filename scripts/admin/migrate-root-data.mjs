@@ -1,6 +1,7 @@
 import { initializeAdmin } from './admin-config.mjs';
 import {
   ROOT_COLLECTIONS,
+  assertActiveDestinationOrganization,
   classifyDocuments,
   parseMigrationOptions,
 } from './migrate-root-data-utils.mjs';
@@ -32,6 +33,9 @@ try {
   console.log(`接続先: ${projectId}`);
   console.log(`対象団体: ${options.organizationId}`);
   console.log(`モード: ${options.apply ? 'コピー実行' : 'dry-run（書き込みなし）'}`);
+  assertActiveDestinationOrganization(
+    await db.doc(`organizations/${options.organizationId}`).get(),
+  );
 
   const plans = [];
   for (const collectionName of ROOT_COLLECTIONS) {

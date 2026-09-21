@@ -54,7 +54,7 @@
 - ログインには管理者が発行したユーザーIDと一時パスワードを使います。
 - `users/{uid}.passwordChangeRequired`が`true`の利用者は、通常画面より先に専用のパスワード変更画面が表示されます。
 - 通常データはすべて`organizations/{organizationId}/...`配下へ保存されます。団体IDが未解決の状態でルートコレクションへフォールバックしません。
-- owner/adminは設定画面から一般利用者アカウントを申請できます。申請にパスワードは保存されず、roleは常に`member`です。
+- owner/adminは設定画面から既存の部員に紐づく一般利用者アカウントを申請できます。申請にパスワードは保存されず、roleは常に`member`です。
 - memberは閲覧、自分の出欠、掲示板投稿が中心です。管理データの変更はowner/adminに限定されます。
 
 ## Firestore コレクション
@@ -90,6 +90,8 @@ npm.cmd run admin:approve-account-request
 承認コマンドはpending申請だけを処理し、ユーザーID予約、Firebase Auth、
 `users`、`memberships`、申請状態を更新します。一時パスワードは成功時に一度だけ
 端末へ表示されるため、安全な経路で本人へ渡してください。画面やファイルへ保存しないでください。
+承認が中断して`approving`のまま残った場合は状態を確認し、
+`npm.cmd run admin:approve-account-request -- --recover`を実行して追加の`RECOVER`確認を行います。
 
 ### 既存ルートデータの移行
 

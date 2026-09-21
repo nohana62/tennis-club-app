@@ -5,6 +5,7 @@ import { approveAccountRequest } from './account-request-approval.mjs';
 import { validateId } from './admin-utils.mjs';
 
 const prompt = createInterface({ input, output });
+const recoverInterrupted = process.argv.slice(2).includes('--recover');
 
 try {
   const organizationId = validateId(await prompt.question('団体ID: '), '団体ID');
@@ -16,6 +17,12 @@ try {
     `${organizationId} の ${loginId} を一般利用者として承認します。APPROVEと入力: `,
   );
   if (confirmation !== 'APPROVE') throw new Error('承認を中止しました。');
+  if (recoverInterrupted) {
+    const recoveryConfirmation = await prompt.question(
+      '中断された承認のAuth利用者と予約を取り消して再実行します。RECOVERと入力: ',
+    );
+    if (recoveryConfirmation !== 'RECOVER') throw new Error('復旧を中止しました。');
+  }
 
   const { projectId, auth, db } = await initializeAdmin();
   console.log(`接続先: ${projectId}`);
@@ -24,6 +31,7 @@ try {
     db,
     organizationId,
     loginId,
+    recoverInterrupted,
   });
   console.log('アカウント申請を承認しました。');
   console.log(`団体ID: ${result.organizationId}`);

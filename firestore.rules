@@ -20,7 +20,8 @@ service cloud.firestore {
 
     function isActiveUser() {
       return signedIn()
-        && get(userPath()).data.status == 'active';
+        && get(userPath()).data.status == 'active'
+        && get(userPath()).data.passwordChangeRequired != true;
     }
 
     function isActiveMember(organizationId) {
@@ -82,12 +83,15 @@ service cloud.firestore {
           && request.resource.data.role == 'member'
           && request.resource.data.status == 'pending'
           && request.resource.data.requestedBy == request.auth.uid
+          && request.resource.data.memberId is string
+          && exists(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.resource.data.memberId))
           && request.resource.data.keys().hasAll([
             'loginId',
             'displayName',
             'role',
             'status',
             'requestedBy',
+            'memberId',
             'createdAt',
             'updatedAt'
           ])
@@ -97,6 +101,7 @@ service cloud.firestore {
             'role',
             'status',
             'requestedBy',
+            'memberId',
             'createdAt',
             'updatedAt'
           ])
@@ -149,6 +154,7 @@ service cloud.firestore {
         allow read: if isActiveMember(organizationId);
         allow create: if isActiveMember(organizationId)
           && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.authorName == get(userPath()).data.displayName
           && request.resource.data.keys().hasAll([
             'authorName',
             'content',

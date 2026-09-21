@@ -42,5 +42,6 @@ export function validateAccountRequest(request, expectedLoginId) {
   if (request.role !== 'member') {
     throw new Error('申請文書のroleはmemberである必要があります。');
   }
-  return { loginId, displayName, role: 'member' };
+  const memberId = validateId(String(request.memberId ?? ''), '部員ID');
+  return { loginId, displayName, role: 'member', memberId };
 }

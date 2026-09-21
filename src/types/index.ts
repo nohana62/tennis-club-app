@@ -124,6 +124,7 @@ export interface AccountRequest {
   role: 'member';
   status: 'pending' | 'approved' | 'rejected';
   requestedBy: string;
+  memberId: string;
   createdAt?: unknown;
   approvedAt?: unknown;
   approvedBy?: string;

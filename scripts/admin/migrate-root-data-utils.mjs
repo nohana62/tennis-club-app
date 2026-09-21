@@ -69,3 +69,9 @@ export function classifyDocuments(sourceDocuments, targetDocuments) {
   }
   return { copy, identical, conflicts };
 }
+
+export function assertActiveDestinationOrganization(snapshot) {
+  if (!snapshot.exists || snapshot.data()?.status !== 'active') {
+    throw new Error('移行先の有効な団体が見つかりません。');
+  }
+}

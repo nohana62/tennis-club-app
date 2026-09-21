@@ -35,6 +35,7 @@ export async function approveAccountRequest({
   approvedBy = 'admin-cli',
   temporaryPassword = generateTemporaryPassword(),
   approvalToken = randomUUID(),
+  recoverInterrupted = false,
 }) {
   const organizationId = validateId(organizationIdInput, '団体ID');
   const loginId = validateId(loginIdInput, 'ユーザーID');
@@ -44,11 +45,64 @@ export async function approveAccountRequest({
   );
   const loginIdRef = db.doc(`loginIds/${loginId}`);
   const uid = randomUUID().replaceAll('-', '');
-  let authCreated = false;
   let reserved = false;
+  let requestDetails;
+
+  const interrupted = await db.runTransaction(async (transaction) => {
+    const [requestSnapshot, loginIdSnapshot] = await Promise.all([
+      transaction.get(requestRef),
+      transaction.get(loginIdRef),
+    ]);
+    const request = requestSnapshot.data();
+    const login = loginIdSnapshot.data();
+    if (request?.status !== 'approving') return null;
+    if (
+      login?.status !== 'reserved'
+      || login.organizationId !== organizationId
+      || login.approvalToken !== request.approvalToken
+      || !login.uid
+    ) {
+      throw new Error('申請とユーザーID予約の状態が不整合です。手動確認が必要です。');
+    }
+    return { uid: login.uid, approvalToken: login.approvalToken };
+  });
+  if (interrupted) {
+    if (!recoverInterrupted) {
+      throw new Error('中断された承認処理があります。状態確認後に--recoverを指定してください。');
+    }
+    try {
+      await auth.deleteUser(interrupted.uid);
+    } catch (error) {
+      if (error?.code !== 'auth/user-not-found') {
+        throw new Error(
+          `中断処理のAuth利用者を削除できないため予約を保持しました: ${error?.message ?? String(error)}`,
+          { cause: error },
+        );
+      }
+    }
+    await db.runTransaction(async (transaction) => {
+      const [requestSnapshot, loginIdSnapshot] = await Promise.all([
+        transaction.get(requestRef),
+        transaction.get(loginIdRef),
+      ]);
+      if (
+        requestSnapshot.data()?.status !== 'approving'
+        || requestSnapshot.data()?.approvalToken !== interrupted.approvalToken
+        || loginIdSnapshot.data()?.approvalToken !== interrupted.approvalToken
+      ) {
+        throw new Error('復旧中に申請状態が変更されました。');
+      }
+      transaction.delete(loginIdRef);
+      transaction.update(requestRef, {
+        status: 'pending',
+        approvalToken: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  }
 
   try {
-    const request = await db.runTransaction(async (transaction) => {
+    requestDetails = await db.runTransaction(async (transaction) => {
       const [organization, requestSnapshot, loginIdSnapshot] = await Promise.all([
         transaction.get(organizationRef),
         transaction.get(requestRef),
@@ -61,6 +115,12 @@ export async function approveAccountRequest({
         throw new Error('同じユーザーIDが既に予約または使用されています。');
       }
       const validated = validateAccountRequest(requestSnapshot.data(), loginId);
+      const memberSnapshot = await transaction.get(
+        db.doc(`organizations/${organizationId}/members/${validated.memberId}`),
+      );
+      if (!memberSnapshot.exists) {
+        throw new Error('申請に紐付く部員が見つかりません。');
+      }
       transaction.create(loginIdRef, {
         status: 'reserved',
         organizationId,
@@ -82,15 +142,14 @@ export async function approveAccountRequest({
       email: createInternalEmail(loginId),
       emailVerified: true,
       password: temporaryPassword,
-      displayName: request.displayName,
+      displayName: requestDetails.displayName,
       disabled: false,
     });
-    authCreated = true;
 
     const batch = db.batch();
     batch.create(db.doc(`users/${uid}`), {
       loginId,
-      displayName: request.displayName,
+      displayName: requestDetails.displayName,
       defaultOrganizationId: organizationId,
       status: 'active',
       passwordChangeRequired: true,
@@ -100,6 +159,7 @@ export async function approveAccountRequest({
     batch.create(db.doc(`organizations/${organizationId}/memberships/${uid}`), {
       role: 'member',
       status: 'active',
+      memberId: requestDetails.memberId,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -118,14 +178,48 @@ export async function approveAccountRequest({
     });
     await batch.commit();
 
-    return { organizationId, loginId, displayName: request.displayName, uid, temporaryPassword };
+    return {
+      organizationId,
+      loginId,
+      displayName: requestDetails.displayName,
+      uid,
+      temporaryPassword,
+    };
   } catch (error) {
     const rollbackErrors = [];
-    if (authCreated) {
+    if (reserved) {
+      const committed = await db.runTransaction(async (transaction) => {
+        const [loginIdSnapshot, requestSnapshot] = await Promise.all([
+          transaction.get(loginIdRef),
+          transaction.get(requestRef),
+        ]);
+        return loginIdSnapshot.data()?.status === 'active'
+          && loginIdSnapshot.data()?.uid === uid
+          && requestSnapshot.data()?.status === 'approved'
+          && requestSnapshot.data()?.approvedUid === uid;
+      });
+      if (committed) {
+        return {
+          organizationId,
+          loginId,
+          displayName: requestDetails?.displayName ?? '',
+          uid,
+          temporaryPassword,
+        };
+      }
+    }
+    if (reserved) {
       try {
+        await auth.getUser(uid);
         await auth.deleteUser(uid);
       } catch (rollbackError) {
-        rollbackErrors.push(`Auth削除: ${rollbackError?.message ?? String(rollbackError)}`);
+        if (rollbackError?.code !== 'auth/user-not-found') {
+          throw new Error(
+            `${error?.message ?? String(error)}（Auth削除を確認できないため予約を保持しました: `
+            + `${rollbackError?.message ?? String(rollbackError)}）`,
+            { cause: error },
+          );
+        }
       }
     }
     if (reserved) {

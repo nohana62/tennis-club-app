@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ROOT_COLLECTIONS,
+  assertActiveDestinationOrganization,
   classifyDocuments,
   parseMigrationOptions,
 } from './migrate-root-data-utils.mjs';
@@ -56,4 +57,19 @@ test('classifies identical reruns as safe and rejects content conflicts', () => 
   assert.deepEqual(result.copy.map(({ id }) => id), ['new']);
   assert.deepEqual(result.identical, ['same']);
   assert.deepEqual(result.conflicts, ['conflict']);
+});
+
+test('requires an existing active destination organization', () => {
+  assert.doesNotThrow(() => assertActiveDestinationOrganization({
+    exists: true,
+    data: () => ({ status: 'active' }),
+  }));
+  assert.throws(() => assertActiveDestinationOrganization({
+    exists: false,
+    data: () => undefined,
+  }), /有効な団体/);
+  assert.throws(() => assertActiveDestinationOrganization({
+    exists: true,
+    data: () => ({ status: 'suspended' }),
+  }), /有効な団体/);
 });
