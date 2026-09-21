@@ -86,14 +86,17 @@ export interface Post {
   authorName: string;
   content: string;
   important: boolean;
+  createdBy?: string;
   createdAt?: string;
 }
 
 export type OrganizationRole = 'owner' | 'admin' | 'member';
 export type AccountStatus = 'active' | 'suspended';
+declare const organizationIdBrand: unique symbol;
+export type OrganizationId = string & { readonly [organizationIdBrand]: true };
 
 export interface Organization {
-  id: string;
+  id: OrganizationId;
   name: string;
   status: AccountStatus;
 }

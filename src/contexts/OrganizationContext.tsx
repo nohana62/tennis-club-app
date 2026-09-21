@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { AppUser, Membership, Organization } from '../types';
+import type { AppUser, Membership, Organization, OrganizationId } from '../types';
 import {
   completeRequiredPasswordChange,
   resolveUserOrganization,
@@ -59,6 +59,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   return (
     <OrganizationContext.Provider
       value={{
+        organizationId: IS_DEMO ? 'demo' as OrganizationId : organization?.id ?? null,
         userProfile,
         organization,
         membership,

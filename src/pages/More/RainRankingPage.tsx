@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { getAttendances, getEvents, getMembers } from '../../services';
 import type { Attendance, ClubEvent, Member } from '../../types';
 import { buildRainRanking } from '../../utils/rainRanking';
+import { useOrganizationId } from '../../contexts/organization';
 
 const now = new Date();
 const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -17,6 +18,7 @@ function rankStyle(rank: number): string {
 }
 
 export default function RainRankingPage() {
+  const organizationId = useOrganizationId();
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
@@ -29,9 +31,9 @@ export default function RainRankingPage() {
     (async () => {
       try {
         const [eventData, memberData, attendanceData] = await Promise.all([
-          getEvents(),
-          getMembers(),
-          getAttendances(),
+          getEvents(organizationId),
+          getMembers(organizationId),
+          getAttendances(organizationId),
         ]);
         setEvents(eventData);
         setMembers(memberData);
@@ -43,7 +45,7 @@ export default function RainRankingPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [organizationId]);
 
   const invalidPeriod = !fromMonth || !toMonth || fromMonth > toMonth;
   const result = useMemo(

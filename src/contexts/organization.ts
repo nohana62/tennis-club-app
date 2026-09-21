@@ -1,7 +1,8 @@
 import { createContext, useContext } from 'react';
-import type { AppUser, Membership, Organization } from '../types';
+import type { AppUser, Membership, Organization, OrganizationId } from '../types';
 
 export interface OrganizationContextValue {
+  organizationId: OrganizationId | null;
   userProfile: AppUser | null;
   organization: Organization | null;
   membership: Membership | null;
@@ -17,4 +18,12 @@ export function useOrganization() {
   const value = useContext(OrganizationContext);
   if (!value) throw new Error('useOrganization must be used within OrganizationProvider');
   return value;
+}
+
+export function useOrganizationId(): OrganizationId {
+  const { organizationId } = useOrganization();
+  if (!organizationId) {
+    throw new Error('organization-id-not-resolved');
+  }
+  return organizationId;
 }

@@ -29,58 +29,58 @@ const genId = () => `mock-${nextId++}`;
 
 // ── Events ──────────────────────────────────────────
 
-export async function getEvents(): Promise<ClubEvent[]> {
+export async function getEvents(_organizationId: string): Promise<ClubEvent[]> {
   return [...events].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function addEvent(event: Omit<ClubEvent, 'id'>): Promise<string> {
+export async function addEvent(_organizationId: string, event: Omit<ClubEvent, 'id'>): Promise<string> {
   const id = genId();
   events.push({ ...event, id, createdAt: new Date().toISOString() });
   return id;
 }
 
-export async function updateEvent(id: string, data: Partial<ClubEvent>): Promise<void> {
+export async function updateEvent(_organizationId: string, id: string, data: Partial<ClubEvent>): Promise<void> {
   events = events.map((e) => (e.id === id ? { ...e, ...data } : e));
 }
 
-export async function deleteEvent(id: string): Promise<void> {
+export async function deleteEvent(_organizationId: string, id: string): Promise<void> {
   events = events.filter((e) => e.id !== id);
 }
 
 // ── Members ─────────────────────────────────────────
 
-export async function getMembers(): Promise<Member[]> {
+export async function getMembers(_organizationId: string): Promise<Member[]> {
   return [...members].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
-export async function addMember(member: Omit<Member, 'id'>): Promise<string> {
+export async function addMember(_organizationId: string, member: Omit<Member, 'id'>): Promise<string> {
   const id = genId();
   const maxOrder = members.reduce((max, m) => (m.order ?? 0) > max ? (m.order ?? 0) : max, -1);
   members.push({ ...member, id, order: maxOrder + 1, joinedAt: new Date().toISOString() });
   return id;
 }
 
-export async function updateMember(id: string, data: Partial<Member>): Promise<void> {
+export async function updateMember(_organizationId: string, id: string, data: Partial<Member>): Promise<void> {
   members = members.map((m) => (m.id === id ? { ...m, ...data } : m));
 }
 
-export async function deleteMember(id: string): Promise<void> {
+export async function deleteMember(_organizationId: string, id: string): Promise<void> {
   members = members.filter((m) => m.id !== id);
 }
 
 // ── Attendance ──────────────────────────────────────
 
-export async function getAttendances(): Promise<Attendance[]> {
+export async function getAttendances(_organizationId: string): Promise<Attendance[]> {
   return [...attendances];
 }
 
-export async function setAttendance(attendance: Omit<Attendance, 'id'>): Promise<string> {
+export async function setAttendance(_organizationId: string, attendance: Omit<Attendance, 'id'>): Promise<string> {
   const id = genId();
   attendances.push({ ...attendance, id, updatedAt: new Date().toISOString() });
   return id;
 }
 
-export async function updateAttendance(id: string, data: Partial<Attendance>): Promise<void> {
+export async function updateAttendance(_organizationId: string, id: string, data: Partial<Attendance>): Promise<void> {
   attendances = attendances.map((a) =>
     a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a
   );
@@ -88,37 +88,46 @@ export async function updateAttendance(id: string, data: Partial<Attendance>): P
 
 // ── Doubles schedules ───────────────────────────────
 
-function notifyDoublesSchedule(eventId: string): void {
-  const schedule = doublesSchedules.get(eventId);
-  doublesListeners.get(eventId)?.forEach((listener) => {
+function doublesKey(organizationId: string, eventId: string): string {
+  return `${organizationId}/${eventId}`;
+}
+
+function notifyDoublesSchedule(organizationId: string, eventId: string): void {
+  const key = doublesKey(organizationId, eventId);
+  const schedule = doublesSchedules.get(key);
+  doublesListeners.get(key)?.forEach((listener) => {
     listener(schedule ? structuredClone(schedule) : null);
   });
 }
 
 export function subscribeDoublesSchedule(
+  organizationId: string,
   eventId: string,
   onData: (schedule: DoublesSchedule | null) => void,
   _onError: (error: Error) => void,
 ): () => void {
-  const listeners = doublesListeners.get(eventId) ?? new Set();
+  const key = doublesKey(organizationId, eventId);
+  const listeners = doublesListeners.get(key) ?? new Set();
   listeners.add(onData);
-  doublesListeners.set(eventId, listeners);
-  const schedule = doublesSchedules.get(eventId);
+  doublesListeners.set(key, listeners);
+  const schedule = doublesSchedules.get(key);
   onData(schedule ? structuredClone(schedule) : null);
   return () => {
     listeners.delete(onData);
-    if (listeners.size === 0) doublesListeners.delete(eventId);
+    if (listeners.size === 0) doublesListeners.delete(key);
   };
 }
 
 export async function createDoublesSchedule(
+  organizationId: string,
   eventId: string,
   matches: StoredDoublesMatch[],
   participantCount: number,
 ): Promise<boolean> {
-  if (doublesSchedules.has(eventId)) return false;
+  const key = doublesKey(organizationId, eventId);
+  if (doublesSchedules.has(key)) return false;
   const now = new Date().toISOString();
-  doublesSchedules.set(eventId, {
+  doublesSchedules.set(key, {
     eventId,
     generationId: createGenerationId(),
     revision: 0,
@@ -127,25 +136,27 @@ export async function createDoublesSchedule(
     createdAt: now,
     updatedAt: now,
   });
-  notifyDoublesSchedule(eventId);
+  notifyDoublesSchedule(organizationId, eventId);
   return true;
 }
 
 export async function replaceDoublesSchedule(
+  organizationId: string,
   eventId: string,
   expectedGenerationId: string,
   expectedRevision: number,
   matches: StoredDoublesMatch[],
   participantCount: number,
 ): Promise<boolean> {
-  const current = doublesSchedules.get(eventId);
+  const key = doublesKey(organizationId, eventId);
+  const current = doublesSchedules.get(key);
   if (
     !current
     || current.generationId !== expectedGenerationId
     || current.revision !== expectedRevision
   ) return false;
   const now = new Date().toISOString();
-  doublesSchedules.set(eventId, {
+  doublesSchedules.set(key, {
     eventId,
     generationId: createGenerationId(),
     revision: 0,
@@ -154,17 +165,18 @@ export async function replaceDoublesSchedule(
     createdAt: now,
     updatedAt: now,
   });
-  notifyDoublesSchedule(eventId);
+  notifyDoublesSchedule(organizationId, eventId);
   return true;
 }
 
 export async function setDoublesMatchCompleted(
+  organizationId: string,
   eventId: string,
   expectedGenerationId: string,
   matchNumber: number,
   completed: boolean,
 ): Promise<boolean> {
-  const schedule = doublesSchedules.get(eventId);
+  const schedule = doublesSchedules.get(doublesKey(organizationId, eventId));
   if (!schedule || schedule.generationId !== expectedGenerationId) return false;
   if (!schedule.matches.some((match) => match.number === matchNumber)) {
     throw new Error('対象の試合が見つかりません。');
@@ -174,11 +186,12 @@ export async function setDoublesMatchCompleted(
   ));
   schedule.revision += 1;
   schedule.updatedAt = new Date().toISOString();
-  notifyDoublesSchedule(eventId);
+  notifyDoublesSchedule(organizationId, eventId);
   return true;
 }
 
 export async function saveDoublesMatchScore(
+  organizationId: string,
   eventId: string,
   expectedGenerationId: string,
   matchNumber: number,
@@ -189,7 +202,7 @@ export async function saveDoublesMatchScore(
   if (!isValidDoublesGames(teamAGames) || !isValidDoublesGames(teamBGames)) {
     throw new Error('取得ゲーム数は0～99の整数で指定してください。');
   }
-  const schedule = doublesSchedules.get(eventId);
+  const schedule = doublesSchedules.get(doublesKey(organizationId, eventId));
   if (!schedule || schedule.generationId !== expectedGenerationId) return false;
   const target = schedule.matches.find((match) => match.number === matchNumber);
   if (!target || (target.scoreRevision ?? 0) !== expectedScoreRevision) return false;
@@ -206,27 +219,27 @@ export async function saveDoublesMatchScore(
   ));
   schedule.revision += 1;
   schedule.updatedAt = new Date().toISOString();
-  notifyDoublesSchedule(eventId);
+  notifyDoublesSchedule(organizationId, eventId);
   return true;
 }
 
 // ── Expenses ─────────────────────────────────────────
 
-export async function getExpenses(): Promise<Expense[]> {
+export async function getExpenses(_organizationId: string): Promise<Expense[]> {
   return [...expenses].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> {
+export async function addExpense(_organizationId: string, expense: Omit<Expense, 'id'>): Promise<string> {
   const id = genId();
   expenses.push({ ...expense, id, createdAt: new Date().toISOString() });
   return id;
 }
 
-export async function updateExpense(id: string, data: Partial<Expense>): Promise<void> {
+export async function updateExpense(_organizationId: string, id: string, data: Partial<Expense>): Promise<void> {
   expenses = expenses.map((e) => (e.id === id ? { ...e, ...data } : e));
 }
 
-export async function deleteExpense(id: string): Promise<void> {
+export async function deleteExpense(_organizationId: string, id: string): Promise<void> {
   expenses = expenses.filter((e) => e.id !== id);
 }
 
@@ -239,7 +252,7 @@ export interface AppConfig {
   lineGroupId: string;
 }
 
-const LS_CONFIG_KEY = 'tennis_club_app_config';
+const configStorageKey = (organizationId: string) => `tennis_club_app_config_${organizationId}`;
 const DEFAULT_CONFIG: AppConfig = {
   expensePassword: 'tennis123',
   teamsWebhookUrl: '',
@@ -247,33 +260,33 @@ const DEFAULT_CONFIG: AppConfig = {
   lineGroupId: '',
 };
 
-export async function getAppConfig(): Promise<AppConfig> {
+export async function getAppConfig(organizationId: string): Promise<AppConfig> {
   try {
-    const raw = localStorage.getItem(LS_CONFIG_KEY);
+    const raw = localStorage.getItem(configStorageKey(organizationId));
     if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
   } catch { /* ignore */ }
   return { ...DEFAULT_CONFIG };
 }
 
-export async function saveAppConfig(data: Partial<AppConfig>): Promise<void> {
-  const current = await getAppConfig();
-  localStorage.setItem(LS_CONFIG_KEY, JSON.stringify({ ...current, ...data }));
+export async function saveAppConfig(organizationId: string, data: Partial<AppConfig>): Promise<void> {
+  const current = await getAppConfig(organizationId);
+  localStorage.setItem(configStorageKey(organizationId), JSON.stringify({ ...current, ...data }));
 }
 
 // ── Posts (掲示板) ──────────────────────────────────
 
 let posts: Post[] = [];
 
-export async function getPosts(): Promise<Post[]> {
+export async function getPosts(_organizationId: string): Promise<Post[]> {
   return [...posts].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 }
 
-export async function addPost(post: Omit<Post, 'id'>): Promise<string> {
+export async function addPost(_organizationId: string, post: Omit<Post, 'id'>): Promise<string> {
   const id = genId();
   posts.push({ ...post, id, createdAt: new Date().toISOString() });
   return id;
 }
 
-export async function deletePost(id: string): Promise<void> {
+export async function deletePost(_organizationId: string, id: string): Promise<void> {
   posts = posts.filter((p) => p.id !== id);
 }

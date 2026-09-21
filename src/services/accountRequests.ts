@@ -7,12 +7,12 @@ import {
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import type { AccountRequest } from '../types';
+import type { AccountRequest, OrganizationId } from '../types';
 import { validateAccountRequestInput } from '../utils/loginIdentifier';
 import { db } from './firebase';
 
 export async function getAccountRequests(
-  organizationId: string,
+  organizationId: OrganizationId,
 ): Promise<AccountRequest[]> {
   const snapshot = await getDocs(query(
     collection(db, 'organizations', organizationId, 'accountRequests'),
@@ -25,7 +25,7 @@ export async function getAccountRequests(
 }
 
 export async function createAccountRequest(
-  organizationId: string,
+  organizationId: OrganizationId,
   requestedBy: string,
   input: { loginId: string; displayName: string },
 ): Promise<void> {

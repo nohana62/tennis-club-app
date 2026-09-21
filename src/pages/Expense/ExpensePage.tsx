@@ -3,6 +3,9 @@ import { Plus, X, Trash2, Pencil, Lock, Unlock, Eye, EyeOff } from 'lucide-react
 import { getExpenses, addExpense, updateExpense, deleteExpense, getMembers, getAppConfig } from '../../services/index';
 import type { Expense, ExpenseCategory, Member } from '../../types';
 import { format } from 'date-fns';
+import { useOrganizationId } from '../../contexts/organization';
+import { useOrganization } from '../../contexts/organization';
+import { IS_DEMO } from '../../contexts/auth';
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   court: 'コート代',
@@ -31,6 +34,11 @@ const EMPTY_EXPENSE: Omit<Expense, 'id'> = {
 };
 
 export default function ExpensePage() {
+  const organizationId = useOrganizationId();
+  const { membership } = useOrganization();
+  const canManageExpenses = IS_DEMO
+    || membership?.role === 'owner'
+    || membership?.role === 'admin';
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -51,11 +59,16 @@ export default function ExpensePage() {
 
   useEffect(() => {
     load();
-    getAppConfig().then((c) => setExpensePasswordState(c.expensePassword));
-  }, []);
+    if (canManageExpenses) {
+      getAppConfig(organizationId).then((c) => setExpensePasswordState(c.expensePassword));
+    }
+  }, [canManageExpenses, organizationId]);
 
   async function load() {
-    const [e, m] = await Promise.all([getExpenses(), getMembers()]);
+    const [e, m] = await Promise.all([
+      getExpenses(organizationId),
+      getMembers(organizationId),
+    ]);
     setExpenses(e);
     setMembers(m);
   }
@@ -63,9 +76,9 @@ export default function ExpensePage() {
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault();
     if (editing?.id) {
-      await updateExpense(editing.id, form);
+      await updateExpense(organizationId, editing.id, form);
     } else {
-      await addExpense(form);
+      await addExpense(organizationId, form);
     }
     setShowForm(false);
     await load();
@@ -73,7 +86,7 @@ export default function ExpensePage() {
 
   async function handleDelete(e: Expense) {
     if (!e.id || !window.confirm('この経費を削除しますか？')) return;
-    await deleteExpense(e.id);
+    await deleteExpense(organizationId, e.id);
     await load();
   }
 
@@ -109,7 +122,7 @@ export default function ExpensePage() {
         <h1 className="text-xl font-bold text-gray-800">経費計算</h1>
         <div className="flex items-center gap-2">
           {/* 編集モード切り替えボタン */}
-          {isUnlocked ? (
+          {!canManageExpenses ? null : isUnlocked ? (
             <>
               <button
                 onClick={() => { setEditing(null); setForm(EMPTY_EXPENSE); setShowForm(true); }}

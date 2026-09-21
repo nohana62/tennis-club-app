@@ -4,9 +4,9 @@ import { sendTeamsMessage } from '../../services/teams';
 import { sendLineMessage } from '../../services/line';
 import { getAppConfig, saveAppConfig, getMembers, addMember, updateMember, deleteMember } from '../../services/index';
 import type { AppConfig } from '../../services/index';
-import type { AccountRequest, Member } from '../../types';
-import { useAuth } from '../../contexts/auth';
-import { useOrganization } from '../../contexts/organization';
+import type { AccountRequest, Member, OrganizationId } from '../../types';
+import { IS_DEMO, useAuth } from '../../contexts/auth';
+import { useOrganization, useOrganizationId } from '../../contexts/organization';
 import { createAccountRequest, getAccountRequests } from '../../services/accountRequests';
 import { validateAccountRequestInput } from '../../utils/loginIdentifier';
 
@@ -25,13 +25,14 @@ const EMPTY_MEMBER: Omit<Member, 'id'> = {
   role: 'member',
 };
 
-async function saveOrder(ordered: Member[]) {
+async function saveOrder(organizationId: OrganizationId, ordered: Member[]) {
   await Promise.all(ordered.map((m, i) => {
-    if (m.id && m.order !== i) return updateMember(m.id, { order: i });
+    if (m.id && m.order !== i) return updateMember(organizationId, m.id, { order: i });
   }));
 }
 
 export default function SettingsPage() {
+  const organizationId = useOrganizationId();
   const { user } = useAuth();
   const { organization, membership } = useOrganization();
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
@@ -58,24 +59,31 @@ export default function SettingsPage() {
   const [requestDisplayName, setRequestDisplayName] = useState('');
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestMessage, setRequestMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
-  const canRequestAccounts = membership?.role === 'owner' || membership?.role === 'admin';
+  const canManageSettings = IS_DEMO
+    || membership?.role === 'owner'
+    || membership?.role === 'admin';
+  const canRequestAccounts = !IS_DEMO && canManageSettings;
 
   const dragIndex = useRef<number | null>(null);
   const dragOverIndex = useRef<number | null>(null);
 
   useEffect(() => {
-    getAppConfig().then((c) => { setConfig(c); setLoading(false); });
+    if (!canManageSettings) {
+      setLoading(false);
+      return;
+    }
+    getAppConfig(organizationId).then((c) => { setConfig(c); setLoading(false); });
     loadMembers();
     if (canRequestAccounts && organization) {
       void loadAccountRequests(organization.id);
     }
-  }, [canRequestAccounts, organization]);
+  }, [canManageSettings, canRequestAccounts, organization, organizationId]);
 
   async function loadMembers() {
-    setMembers(await getMembers());
+    setMembers(await getMembers(organizationId));
   }
 
-  async function loadAccountRequests(organizationId: string) {
+  async function loadAccountRequests(organizationId: OrganizationId) {
     setAccountRequests(await getAccountRequests(organizationId));
   }
 
@@ -89,11 +97,11 @@ export default function SettingsPage() {
       const input = validateAccountRequestInput(requestLoginId, requestDisplayName);
       setRequestSubmitting(true);
       setRequestMessage(null);
-      await createAccountRequest(organization.id, user.uid, input);
+      await createAccountRequest(organizationId, user.uid, input);
       setRequestLoginId('');
       setRequestDisplayName('');
       setRequestMessage({ type: 'ok', text: '一般利用者アカウントを申請しました。' });
-      await loadAccountRequests(organization.id);
+      await loadAccountRequests(organizationId);
     } catch (error) {
       const duplicate = error instanceof Error
         && (error.message === 'account-request-already-exists'
@@ -114,9 +122,9 @@ export default function SettingsPage() {
   async function handleMemberSubmit(ev: React.FormEvent) {
     ev.preventDefault();
     if (editingMember?.id) {
-      await updateMember(editingMember.id, memberForm);
+      await updateMember(organizationId, editingMember.id, memberForm);
     } else {
-      await addMember(memberForm);
+      await addMember(organizationId, memberForm);
     }
     setShowMemberForm(false);
     await loadMembers();
@@ -124,7 +132,7 @@ export default function SettingsPage() {
 
   async function handleMemberDelete(m: Member) {
     if (!m.id || !window.confirm(`「${m.name}」を削除しますか？`)) return;
-    await deleteMember(m.id);
+    await deleteMember(organizationId, m.id);
     await loadMembers();
   }
 
@@ -143,7 +151,7 @@ export default function SettingsPage() {
     const [moved] = next.splice(dragIndex.current, 1);
     next.splice(dragOverIndex.current, 0, moved);
     setMembers(next);
-    await saveOrder(next);
+    await saveOrder(organizationId, next);
     dragIndex.current = null;
     dragOverIndex.current = null;
   }
@@ -169,23 +177,24 @@ export default function SettingsPage() {
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       setMembers(next);
-      await saveOrder(next);
+      await saveOrder(organizationId, next);
     }
     touchItemIndex.current = null;
   }
 
   async function handleSave() {
-    await saveAppConfig(config);
+    await saveAppConfig(organizationId, config);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
 
   async function testTeams() {
     if (!config.teamsWebhookUrl) return;
-    await saveAppConfig({ teamsWebhookUrl: config.teamsWebhookUrl });
+    await saveAppConfig(organizationId, { teamsWebhookUrl: config.teamsWebhookUrl });
     setTeamsTestState('sending');
     try {
       await sendTeamsMessage(
+        organizationId,
         'テスト通知',
         '**テニス部管理アプリ** からのテスト送信です。\n\n設定が正常に完了しています ✅',
         '00a550'
@@ -199,10 +208,10 @@ export default function SettingsPage() {
 
   async function testLine() {
     if (!config.lineToken || !config.lineGroupId) return;
-    await saveAppConfig({ lineToken: config.lineToken, lineGroupId: config.lineGroupId });
+    await saveAppConfig(organizationId, { lineToken: config.lineToken, lineGroupId: config.lineGroupId });
     setLineTestState('sending');
     try {
-      await sendLineMessage('【テニス部】テスト通知\n\n設定が完了しました ✅');
+      await sendLineMessage(organizationId, '【テニス部】テスト通知\n\n設定が完了しました ✅');
       setLineTestState('ok');
     } catch {
       setLineTestState('error');
@@ -223,7 +232,7 @@ export default function SettingsPage() {
       setPwMessage({ type: 'error', text: '新しいパスワードが一致しません' });
       return;
     }
-    await saveAppConfig({ expensePassword: pwNew });
+    await saveAppConfig(organizationId, { expensePassword: pwNew });
     setConfig((c) => ({ ...c, expensePassword: pwNew }));
     setPwCurrent(''); setPwNew(''); setPwConfirm('');
     setPwMessage({ type: 'ok', text: 'パスワードを変更しました（全デバイスに反映）' });
@@ -234,6 +243,15 @@ export default function SettingsPage() {
     return (
       <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
         <Loader2 size={18} className="animate-spin" /> 設定を読み込み中...
+      </div>
+    );
+  }
+
+  if (!canManageSettings) {
+    return (
+      <div className="max-w-2xl bg-white rounded-xl border border-gray-100 p-6">
+        <h1 className="text-xl font-bold text-gray-800 mb-2">設定</h1>
+        <p className="text-sm text-gray-600">この画面はownerまたはadminのみ利用できます。</p>
       </div>
     );
   }

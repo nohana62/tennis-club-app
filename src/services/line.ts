@@ -4,12 +4,12 @@
  *    サーバーサイドプロキシ経由での送信を推奨します。
  */
 import { getAppConfig } from "./index";
-import type { ClubEvent } from "../types";
+import type { ClubEvent, OrganizationId } from "../types";
 
 const LINE_API = "https://api.line.me/v2/bot/message/push";
 
-export async function sendLineMessage(text: string): Promise<void> {
-  const { lineToken: TOKEN, lineGroupId: TO } = await getAppConfig();
+export async function sendLineMessage(organizationId: OrganizationId, text: string): Promise<void> {
+  const { lineToken: TOKEN, lineGroupId: TO } = await getAppConfig(organizationId);
   if (!TOKEN || !TO) {
     console.warn("[LINE] 設定が未完了です。通知設定画面で設定してください。");
     return;

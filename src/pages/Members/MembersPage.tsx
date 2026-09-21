@@ -4,6 +4,7 @@ import { getMembers, getAttendances, setAttendance, updateAttendance, getEvents 
 import type { Member, Attendance, AttendanceStatus, ClubEvent } from '../../types';
 import { findAttendanceForMember } from '../../utils/attendance';
 import { isEventCancelled } from '../../utils/events';
+import { useOrganizationId } from '../../contexts/organization';
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   attending: '参加',
@@ -24,6 +25,7 @@ const STATUS_COLOR: Record<AttendanceStatus, string> = {
 };
 
 export default function MembersPage() {
+  const organizationId = useOrganizationId();
   const [members, setMembers] = useState<Member[]>([]);
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
@@ -31,10 +33,14 @@ export default function MembersPage() {
   const [selectedMember, setSelectedMember] = useState<string>('');
   const [attendanceView, setAttendanceView] = useState<'byMember' | 'byDate'>('byMember');
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [organizationId]);
 
   async function load() {
-    const [m, e, a] = await Promise.all([getMembers(), getEvents(), getAttendances()]);
+    const [m, e, a] = await Promise.all([
+      getMembers(organizationId),
+      getEvents(organizationId),
+      getAttendances(organizationId),
+    ]);
     setMembers(m);
     setEvents(e);
     setAttendances(a);
@@ -48,11 +54,11 @@ export default function MembersPage() {
     const member = { id: memberId, name: memberName };
     const existing = findAttendanceForMember(attendances, eventId, member);
     if (existing?.id) {
-      await updateAttendance(existing.id, { status, memberId, memberName });
+      await updateAttendance(organizationId, existing.id, { status, memberId, memberName });
     } else {
-      await setAttendance({ eventId, memberId, memberName, status });
+      await setAttendance(organizationId, { eventId, memberId, memberName, status });
     }
-    const fresh = await getAttendances();
+    const fresh = await getAttendances(organizationId);
     setAttendances(fresh);
   }
 

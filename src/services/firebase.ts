@@ -41,46 +41,60 @@ try {
   throw e;
 }
 
+function organizationCollection(organizationId: string, collectionName: string) {
+  if (!organizationId) throw new Error('organization-id-required');
+  return collection(db, 'organizations', organizationId, collectionName);
+}
+
+function organizationDocument(
+  organizationId: string,
+  collectionName: string,
+  documentId: string,
+) {
+  if (!organizationId) throw new Error('organization-id-required');
+  return doc(db, 'organizations', organizationId, collectionName, documentId);
+}
+
 // ── Events ──────────────────────────────────────────
 
-export async function getEvents(): Promise<ClubEvent[]> {
-  const q = query(collection(db, 'events'), orderBy('date'));
+export async function getEvents(organizationId: string): Promise<ClubEvent[]> {
+  const q = query(organizationCollection(organizationId, 'events'), orderBy('date'));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ClubEvent));
 }
 
-export async function addEvent(event: Omit<ClubEvent, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'events'), {
+export async function addEvent(organizationId: string, event: Omit<ClubEvent, 'id'>): Promise<string> {
+  const ref = await addDoc(organizationCollection(organizationId, 'events'), {
     ...event,
     createdAt: Timestamp.now().toDate().toISOString(),
   });
   return ref.id;
 }
 
-export async function updateEvent(id: string, event: Partial<ClubEvent>): Promise<void> {
-  await updateDoc(doc(db, 'events', id), event as Record<string, unknown>);
+export async function updateEvent(organizationId: string, id: string, event: Partial<ClubEvent>): Promise<void> {
+  await updateDoc(organizationDocument(organizationId, 'events', id), event as Record<string, unknown>);
 }
 
-export async function deleteEvent(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'events', id));
+export async function deleteEvent(organizationId: string, id: string): Promise<void> {
+  await deleteDoc(organizationDocument(organizationId, 'events', id));
 }
 
 // ── Members ─────────────────────────────────────────
 
-export async function getMembers(): Promise<Member[]> {
-  const q = query(collection(db, 'members'), orderBy('order'));
+export async function getMembers(organizationId: string): Promise<Member[]> {
+  const q = query(organizationCollection(organizationId, 'members'), orderBy('order'));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Member));
 }
 
-export async function addMember(member: Omit<Member, 'id'>): Promise<string> {
+export async function addMember(organizationId: string, member: Omit<Member, 'id'>): Promise<string> {
   // 既存部員の最大orderを取得して +1
-  const snap = await getDocs(collection(db, 'members'));
+  const snap = await getDocs(organizationCollection(organizationId, 'members'));
   const maxOrder = snap.docs.reduce((max, d) => {
     const o = (d.data() as Member).order ?? 0;
     return o > max ? o : max;
   }, -1);
-  const ref = await addDoc(collection(db, 'members'), {
+  const ref = await addDoc(organizationCollection(organizationId, 'members'), {
     ...member,
     order: maxOrder + 1,
     joinedAt: Timestamp.now().toDate().toISOString(),
@@ -88,31 +102,31 @@ export async function addMember(member: Omit<Member, 'id'>): Promise<string> {
   return ref.id;
 }
 
-export async function updateMember(id: string, member: Partial<Member>): Promise<void> {
-  await updateDoc(doc(db, 'members', id), member as Record<string, unknown>);
+export async function updateMember(organizationId: string, id: string, member: Partial<Member>): Promise<void> {
+  await updateDoc(organizationDocument(organizationId, 'members', id), member as Record<string, unknown>);
 }
 
-export async function deleteMember(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'members', id));
+export async function deleteMember(organizationId: string, id: string): Promise<void> {
+  await deleteDoc(organizationDocument(organizationId, 'members', id));
 }
 
 // ── Attendance ──────────────────────────────────────
 
-export async function getAttendances(): Promise<Attendance[]> {
-  const snap = await getDocs(collection(db, 'attendances'));
+export async function getAttendances(organizationId: string): Promise<Attendance[]> {
+  const snap = await getDocs(organizationCollection(organizationId, 'attendances'));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Attendance));
 }
 
-export async function setAttendance(attendance: Omit<Attendance, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'attendances'), {
+export async function setAttendance(organizationId: string, attendance: Omit<Attendance, 'id'>): Promise<string> {
+  const ref = await addDoc(organizationCollection(organizationId, 'attendances'), {
     ...attendance,
     updatedAt: Timestamp.now().toDate().toISOString(),
   });
   return ref.id;
 }
 
-export async function updateAttendance(id: string, data: Partial<Attendance>): Promise<void> {
-  await updateDoc(doc(db, 'attendances', id), {
+export async function updateAttendance(organizationId: string, id: string, data: Partial<Attendance>): Promise<void> {
+  await updateDoc(organizationDocument(organizationId, 'attendances', id), {
     ...data,
     updatedAt: Timestamp.now().toDate().toISOString(),
   } as Record<string, unknown>);
@@ -121,12 +135,13 @@ export async function updateAttendance(id: string, data: Partial<Attendance>): P
 // ── Doubles schedules ───────────────────────────────
 
 export function subscribeDoublesSchedule(
+  organizationId: string,
   eventId: string,
   onData: (schedule: DoublesSchedule | null) => void,
   onError: (error: Error) => void,
 ): () => void {
   return onSnapshot(
-    doc(db, 'doublesSchedules', eventId),
+    organizationDocument(organizationId, 'doublesSchedules', eventId),
     (snapshot) => {
       onData(snapshot.exists() ? snapshot.data() as DoublesSchedule : null);
     },
@@ -135,11 +150,12 @@ export function subscribeDoublesSchedule(
 }
 
 export async function createDoublesSchedule(
+  organizationId: string,
   eventId: string,
   matches: StoredDoublesMatch[],
   participantCount: number,
 ): Promise<boolean> {
-  const ref = doc(db, 'doublesSchedules', eventId);
+  const ref = organizationDocument(organizationId, 'doublesSchedules', eventId);
   const generationId = createGenerationId();
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
@@ -159,13 +175,14 @@ export async function createDoublesSchedule(
 }
 
 export async function replaceDoublesSchedule(
+  organizationId: string,
   eventId: string,
   expectedGenerationId: string,
   expectedRevision: number,
   matches: StoredDoublesMatch[],
   participantCount: number,
 ): Promise<boolean> {
-  const ref = doc(db, 'doublesSchedules', eventId);
+  const ref = organizationDocument(organizationId, 'doublesSchedules', eventId);
   const generationId = createGenerationId();
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
@@ -190,12 +207,13 @@ export async function replaceDoublesSchedule(
 }
 
 export async function setDoublesMatchCompleted(
+  organizationId: string,
   eventId: string,
   expectedGenerationId: string,
   matchNumber: number,
   completed: boolean,
 ): Promise<boolean> {
-  const ref = doc(db, 'doublesSchedules', eventId);
+  const ref = organizationDocument(organizationId, 'doublesSchedules', eventId);
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists()) return false;
@@ -217,6 +235,7 @@ export async function setDoublesMatchCompleted(
 }
 
 export async function saveDoublesMatchScore(
+  organizationId: string,
   eventId: string,
   expectedGenerationId: string,
   matchNumber: number,
@@ -227,7 +246,7 @@ export async function saveDoublesMatchScore(
   if (!isValidDoublesGames(teamAGames) || !isValidDoublesGames(teamBGames)) {
     throw new Error('取得ゲーム数は0～99の整数で指定してください。');
   }
-  const ref = doc(db, 'doublesSchedules', eventId);
+  const ref = organizationDocument(organizationId, 'doublesSchedules', eventId);
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists()) return false;
@@ -257,26 +276,26 @@ export async function saveDoublesMatchScore(
 
 // ── Expenses ─────────────────────────────────────────
 
-export async function getExpenses(): Promise<Expense[]> {
-  const q = query(collection(db, 'expenses'), orderBy('date', 'desc'));
+export async function getExpenses(organizationId: string): Promise<Expense[]> {
+  const q = query(organizationCollection(organizationId, 'expenses'), orderBy('date', 'desc'));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense));
 }
 
-export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'expenses'), {
+export async function addExpense(organizationId: string, expense: Omit<Expense, 'id'>): Promise<string> {
+  const ref = await addDoc(organizationCollection(organizationId, 'expenses'), {
     ...expense,
     createdAt: Timestamp.now().toDate().toISOString(),
   });
   return ref.id;
 }
 
-export async function updateExpense(id: string, expense: Partial<Expense>): Promise<void> {
-  await updateDoc(doc(db, 'expenses', id), expense as Record<string, unknown>);
+export async function updateExpense(organizationId: string, id: string, expense: Partial<Expense>): Promise<void> {
+  await updateDoc(organizationDocument(organizationId, 'expenses', id), expense as Record<string, unknown>);
 }
 
-export async function deleteExpense(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'expenses', id));
+export async function deleteExpense(organizationId: string, id: string): Promise<void> {
+  await deleteDoc(organizationDocument(organizationId, 'expenses', id));
 }
 
 // ── App Config (shared settings) ────────────────────
@@ -296,34 +315,34 @@ const DEFAULT_CONFIG: AppConfig = {
   lineGroupId: '',
 };
 
-export async function getAppConfig(): Promise<AppConfig> {
-  const ref = doc(db, 'settings', CONFIG_DOC);
+export async function getAppConfig(organizationId: string): Promise<AppConfig> {
+  const ref = organizationDocument(organizationId, 'settings', CONFIG_DOC);
   const snap = await getDoc(ref);
   if (snap.exists()) return { ...DEFAULT_CONFIG, ...snap.data() } as AppConfig;
   return { ...DEFAULT_CONFIG };
 }
 
-export async function saveAppConfig(data: Partial<AppConfig>): Promise<void> {
-  const ref = doc(db, 'settings', CONFIG_DOC);
+export async function saveAppConfig(organizationId: string, data: Partial<AppConfig>): Promise<void> {
+  const ref = organizationDocument(organizationId, 'settings', CONFIG_DOC);
   await setDoc(ref, data, { merge: true });
 }
 
 // ── Posts (掲示板) ──────────────────────────────────
 
-export async function getPosts(): Promise<Post[]> {
-  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+export async function getPosts(organizationId: string): Promise<Post[]> {
+  const q = query(organizationCollection(organizationId, 'posts'), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
 }
 
-export async function addPost(post: Omit<Post, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'posts'), {
+export async function addPost(organizationId: string, post: Omit<Post, 'id'>): Promise<string> {
+  const ref = await addDoc(organizationCollection(organizationId, 'posts'), {
     ...post,
     createdAt: Timestamp.now().toDate().toISOString(),
   });
   return ref.id;
 }
 
-export async function deletePost(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'posts', id));
+export async function deletePost(organizationId: string, id: string): Promise<void> {
+  await deleteDoc(organizationDocument(organizationId, 'posts', id));
 }

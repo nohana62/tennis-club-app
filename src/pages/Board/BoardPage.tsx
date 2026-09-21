@@ -6,8 +6,12 @@ import { sendLineMessage } from '../../services/line';
 import type { Post } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { useOrganizationId } from '../../contexts/organization';
+import { IS_DEMO, useAuth } from '../../contexts/auth';
 
 export default function BoardPage() {
+  const organizationId = useOrganizationId();
+  const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [authorName, setAuthorName] = useState('');
@@ -18,10 +22,10 @@ export default function BoardPage() {
   const [submitting, setSubmitting] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [organizationId]);
 
   async function load() {
-    const p = await getPosts();
+    const p = await getPosts(organizationId);
     setPosts(p);
   }
 
@@ -29,14 +33,20 @@ export default function BoardPage() {
     e.preventDefault();
     if (!authorName.trim() || !content.trim()) return;
     setSubmitting(true);
-    await addPost({ authorName: authorName.trim(), content: content.trim(), important });
+    if (!IS_DEMO && !user) return;
+    await addPost(organizationId, {
+      authorName: authorName.trim(),
+      content: content.trim(),
+      important,
+      createdBy: user?.uid ?? 'demo',
+    });
 
     // 重要フラグONのみ通知
     if (important) {
       const title = `📢【重要】${authorName}さんからの投稿`;
       const body = content.trim();
-      if (notifyTeams) await sendTeamsMessage(title, body, 'ef4444');
-      if (notifyLine) await sendLineMessage(`【テニス部 重要掲示板】\n${authorName}さん:\n${body}`);
+      if (notifyTeams) await sendTeamsMessage(organizationId, title, body, 'ef4444');
+      if (notifyLine) await sendLineMessage(organizationId, `【テニス部 重要掲示板】\n${authorName}さん:\n${body}`);
     }
 
     setAuthorName('');
@@ -51,7 +61,7 @@ export default function BoardPage() {
 
   async function handleDelete(post: Post) {
     if (!post.id || !window.confirm('この投稿を削除しますか？')) return;
-    await deletePost(post.id);
+    await deletePost(organizationId, post.id);
     await load();
   }
 
