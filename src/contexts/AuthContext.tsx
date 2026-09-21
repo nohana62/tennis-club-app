@@ -6,12 +6,15 @@ import {
 } from 'react';
 import {
   onAuthStateChanged,
+  browserLocalPersistence,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { AuthContext, IS_DEMO, type AuthContextValue } from './auth';
+import { createInternalLoginEmail } from '../utils/loginIdentifier';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -29,8 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      signIn: async (email, password) => {
-        await signInWithEmailAndPassword(auth, email, password);
+      signIn: async (organizationCode, userId, password) => {
+        const internalEmail = createInternalLoginEmail(organizationCode, userId);
+        await setPersistence(auth, browserLocalPersistence);
+        await signInWithEmailAndPassword(auth, internalEmail, password);
       },
       signOut: async () => {
         await firebaseSignOut(auth);
