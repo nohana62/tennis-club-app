@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backup": "node scripts/backup-firestore.mjs",
+    "test:backup": "node --test scripts/backup-firestore.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

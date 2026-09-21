@@ -60,6 +60,22 @@
 | attendances | 参加/欠席記録 |
 | expenses | 経費記録 |
 
+## Firestoreのローカルバックアップ
+
+Sparkプラン向けの読み取り専用バックアップです。本番データや接続情報をGitHubへ追加しないでください。
+
+1. PowerShellで`Copy-Item .env.backup.example .env.backup.local`を実行し、FirebaseコンソールのWebアプリ設定を入力します。
+2. `.env.backup.local`の`VITE_FIREBASE_PROJECT_ID`が`tennis-club-app-cb7d2`であることを確認します。
+3. 次のコマンドを実行します。
+
+```powershell
+npm.cmd run backup -- --project=tennis-club-app-cb7d2
+```
+
+成功すると、`backups`フォルダへ日時付きJSONとSHA-256ファイルが作成されます。バックアップには個人情報や`settings/appConfig`の通知資格情報が含まれる可能性があるため、会社管理の暗号化済み保存先で保管してください。
+
+このバックアップにはFirebase Authentication、Firestore Security Rules、Indexes、App Check設定は含まれません。
+
 ## PWA インストール方法
 
 iPhone (Safari): 共有ボタン → ホーム画面に追加
