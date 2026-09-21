@@ -66,7 +66,13 @@ Sparkプラン向けの読み取り専用バックアップです。本番デー
 
 1. PowerShellで`Copy-Item .env.backup.example .env.backup.local`を実行し、FirebaseコンソールのWebアプリ設定を入力します。
 2. `.env.backup.local`の`VITE_FIREBASE_PROJECT_ID`が`tennis-club-app-cb7d2`であることを確認します。
-3. 次のコマンドを実行します。
+3. Firebaseへ接続しない設定検査を実行します。
+
+```powershell
+npm.cmd run backup:check
+```
+
+4. 設定検査が成功したら、バックアップを実行します。
 
 ```powershell
 npm.cmd run backup -- --project=tennis-club-app-cb7d2

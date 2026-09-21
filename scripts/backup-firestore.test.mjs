@@ -9,6 +9,7 @@ import {
   assertSensitivePathsIgnored,
   parseArguments,
   parseEnvFile,
+  runBackup,
   serializeFirestoreValue,
   validateFirebaseConfig,
   writeBackupFiles,
@@ -26,7 +27,11 @@ const validConfig = {
 test('requires the exact production project argument', () => {
   assert.deepEqual(
     parseArguments([`--project=${EXPECTED_PROJECT_ID}`]),
-    { projectId: EXPECTED_PROJECT_ID },
+    { projectId: EXPECTED_PROJECT_ID, checkOnly: false },
+  );
+  assert.deepEqual(
+    parseArguments(['--check-only', '--project', EXPECTED_PROJECT_ID]),
+    { projectId: EXPECTED_PROJECT_ID, checkOnly: true },
   );
   assert.throws(() => parseArguments([]), /--project=/u);
   assert.throws(
@@ -147,6 +152,38 @@ test('checks sensitive exclusions without requiring the Git command', async () =
       assertSensitivePathsIgnored(cwd),
       /\.env\.backup\.local/u,
     );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('check-only validates local settings without creating a backup', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'tennis-check-test-'));
+
+  try {
+    await writeFile(
+      path.join(cwd, '.gitignore'),
+      'backups/\n.env.backup.local\n',
+      'utf8',
+    );
+    await writeFile(
+      path.join(cwd, '.env.backup.local'),
+      `${Object.entries(validConfig)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n')}\n`,
+      'utf8',
+    );
+
+    const result = await runBackup(
+      ['--check-only', `--project=${EXPECTED_PROJECT_ID}`],
+      cwd,
+    );
+
+    assert.deepEqual(result, {
+      checkOnly: true,
+      projectId: EXPECTED_PROJECT_ID,
+    });
+    await assert.rejects(readFile(path.join(cwd, 'backups')), /ENOENT|EISDIR/u);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

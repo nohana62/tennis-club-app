@@ -35,9 +35,15 @@ const REQUIRED_ENV_KEYS = Object.freeze([
 
 export function parseArguments(args) {
   let projectId;
+  let checkOnly = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
+
+    if (argument === '--check-only') {
+      checkOnly = true;
+      continue;
+    }
 
     if (argument.startsWith('--project=')) {
       projectId = argument.slice('--project='.length);
@@ -65,7 +71,7 @@ export function parseArguments(args) {
     );
   }
 
-  return { projectId };
+  return { projectId, checkOnly };
 }
 
 export function parseEnvFile(contents) {
@@ -398,11 +404,16 @@ async function readCollections(db, firestoreApi) {
 }
 
 export async function runBackup(args, cwd = process.cwd()) {
-  const { projectId } = parseArguments(args);
+  const { projectId, checkOnly } = parseArguments(args);
   await assertSensitivePathsIgnored(cwd);
   const firebaseConfig = await loadFirebaseConfig(cwd, projectId);
 
   console.log(`接続先: ${firebaseConfig.projectId}`);
+  if (checkOnly) {
+    console.log('設定確認完了: Firebaseには接続していません。');
+    return { checkOnly: true, projectId };
+  }
+
   console.log(
     '注意: バックアップには個人情報や通知資格情報が含まれる可能性があります。',
   );
