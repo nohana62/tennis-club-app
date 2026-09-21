@@ -1,10 +1,11 @@
 import { Outlet } from 'react-router-dom';
 import SideNav from './SideNav';
 import BottomNav from './BottomNav';
-
-const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
+import { IS_DEMO, useAuth } from '../contexts/auth';
 
 export default function Layout() {
+  const { user, signOut } = useAuth();
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <SideNav />
@@ -13,7 +14,20 @@ export default function Layout() {
         <header className="flex items-center gap-2 px-4 py-3 bg-green-700 text-white md:hidden">
           <span className="text-xl">🎾</span>
           <span className="font-bold">テニス部管理アプリ</span>
+          {!IS_DEMO && (
+            <button className="ml-auto text-sm underline" onClick={signOut} type="button">
+              ログアウト
+            </button>
+          )}
         </header>
+        {!IS_DEMO && (
+          <div className="hidden md:flex items-center justify-end gap-3 border-b bg-white px-6 py-2 text-sm text-gray-600">
+            <span>{user?.email}</span>
+            <button className="font-medium text-green-700 underline" onClick={signOut} type="button">
+              ログアウト
+            </button>
+          </div>
+        )}
         {IS_DEMO && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-800 flex items-center gap-2">
             <span className="text-base">🧪</span>

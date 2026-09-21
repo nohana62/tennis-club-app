@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
 import {
   getFirestore,
   collection,
@@ -30,9 +31,11 @@ const firebaseConfig = {
 };
 
 let db: Firestore;
+export let auth: Auth;
 try {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
+  auth = getAuth(app);
 } catch (e) {
   console.error('Firebase 初期化エラー:', e);
   throw e;

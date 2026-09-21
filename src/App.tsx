@@ -9,8 +9,25 @@ import BoardPage from "./pages/Board/BoardPage";
 import DoublesPage from "./pages/Doubles/DoublesPage";
 import MorePage from "./pages/More/MorePage";
 import RainRankingPage from "./pages/More/RainRankingPage";
+import LoginPage from "./pages/Auth/LoginPage";
+import { AuthProvider } from "./contexts/AuthContext";
+import { IS_DEMO, useAuth } from "./contexts/auth";
 
-export default function App() {
+function AuthenticatedApp() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-green-50 flex items-center justify-center text-green-800">
+        ログイン状態を確認しています...
+      </div>
+    );
+  }
+
+  if (!IS_DEMO && !user) {
+    return <LoginPage />;
+  }
+
   return (
     <BrowserRouter basename="/tennis-club-app">
       <Routes>
@@ -27,5 +44,13 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   );
 }
