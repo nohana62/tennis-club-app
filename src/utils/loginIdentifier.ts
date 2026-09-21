@@ -8,19 +8,12 @@ export function isValidLoginPart(value: string): boolean {
   return LOGIN_PART_PATTERN.test(normalizeLoginPart(value));
 }
 
-export function createInternalLoginEmail(
-  organizationCode: string,
-  userId: string,
-): string {
-  const normalizedOrganizationCode = normalizeLoginPart(organizationCode);
+export function createInternalLoginEmail(userId: string): string {
   const normalizedUserId = normalizeLoginPart(userId);
 
-  if (
-    !isValidLoginPart(normalizedOrganizationCode) ||
-    !isValidLoginPart(normalizedUserId)
-  ) {
+  if (!isValidLoginPart(normalizedUserId)) {
     throw new Error('invalid-login-identifier');
   }
 
-  return `${normalizedOrganizationCode}__${normalizedUserId}@login.tennis-club.invalid`;
+  return `${normalizedUserId}@login.tennis-club.invalid`;
 }

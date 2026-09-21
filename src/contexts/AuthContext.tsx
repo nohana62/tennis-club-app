@@ -32,8 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      signIn: async (organizationCode, userId, password) => {
-        const internalEmail = createInternalLoginEmail(organizationCode, userId);
+      signIn: async (userId, password) => {
+        const internalEmail = createInternalLoginEmail(userId);
         await setPersistence(auth, browserLocalPersistence);
         await signInWithEmailAndPassword(auth, internalEmail, password);
       },

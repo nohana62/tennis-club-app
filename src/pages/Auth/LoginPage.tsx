@@ -21,7 +21,6 @@ function getLoginErrorMessage(error: unknown) {
 
 export default function LoginPage() {
   const { signIn } = useAuth();
-  const [organizationCode, setOrganizationCode] = useState('');
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -32,7 +31,7 @@ export default function LoginPage() {
     setError('');
     setSubmitting(true);
     try {
-      await signIn(organizationCode, userId, password);
+      await signIn(userId, password);
     } catch (loginError) {
       setError(getLoginErrorMessage(loginError));
     } finally {
@@ -46,23 +45,9 @@ export default function LoginPage() {
         <div className="mb-6 text-center">
           <div className="text-4xl" aria-hidden="true">🎾</div>
           <h1 className="mt-2 text-xl font-bold text-gray-900">テニス部管理アプリ</h1>
-          <p className="mt-1 text-sm text-gray-600">団体から案内された情報でログインしてください</p>
+          <p className="mt-1 text-sm text-gray-600">登録したユーザーIDでログインしてください</p>
         </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-gray-700">
-            団体コード
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-3 text-base"
-              type="text"
-              autoComplete="organization"
-              autoCapitalize="none"
-              value={organizationCode}
-              onChange={(event) => setOrganizationCode(event.target.value)}
-              placeholder="例: bosys-tennis"
-              pattern="[A-Za-z0-9-]{3,32}"
-              required
-            />
-          </label>
           <label className="block text-sm font-medium text-gray-700">
             ユーザーID
             <input

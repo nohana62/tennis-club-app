@@ -6,7 +6,7 @@ export const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 export interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  signIn: (organizationCode: string, userId: string, password: string) => Promise<void>;
+  signIn: (userId: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
