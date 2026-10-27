@@ -3,6 +3,7 @@ import type { AppUser, Membership, Organization, OrganizationId } from '../types
 import {
   completeRequiredPasswordChange,
   resolveUserOrganization,
+  type OrganizationAccess,
 } from '../services/organization';
 import { IS_DEMO, useAuth } from './auth';
 import { OrganizationContext } from './organization';
@@ -12,6 +13,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<AppUser | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
+  const [availableOrganizations, setAvailableOrganizations] = useState<OrganizationAccess[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,6 +22,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       setUserProfile(null);
       setOrganization(null);
       setMembership(null);
+      setAvailableOrganizations([]);
       setLoading(false);
       setError('');
       return;
@@ -29,11 +32,16 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError('');
       try {
-        const result = await resolveUserOrganization(user.uid);
+        const storedOrganizationId = localStorage.getItem(`activeOrganization:${user.uid}`) ?? undefined;
+        const result = await resolveUserOrganization(user.uid, storedOrganizationId);
         if (!active) return;
         setUserProfile(result.user);
         setOrganization(result.organization);
         setMembership(result.membership);
+        setAvailableOrganizations(result.availableOrganizations);
+        if (result.organization) {
+          localStorage.setItem(`activeOrganization:${user.uid}`, result.organization.id);
+        }
       } catch {
         if (active) setError('利用できる団体が設定されていません。管理者へ連絡してください。');
       } finally {
@@ -55,6 +63,17 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     setUserProfile(result.user);
     setOrganization(result.organization);
     setMembership(result.membership);
+    setAvailableOrganizations(result.availableOrganizations);
+  };
+
+  const selectOrganization = (organizationId: OrganizationId) => {
+    const selected = availableOrganizations.find(
+      (access) => access.organization.id === organizationId,
+    );
+    if (!selected || !user) throw new Error('organization-not-available');
+    localStorage.setItem(`activeOrganization:${user.uid}`, organizationId);
+    setOrganization(selected.organization);
+    setMembership(selected.membership);
   };
 
   return (
@@ -64,8 +83,10 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
         userProfile,
         organization,
         membership,
+        availableOrganizations,
         loading,
         error,
+        selectOrganization,
         completePasswordChange,
       }}
     >

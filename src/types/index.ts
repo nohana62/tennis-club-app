@@ -106,6 +106,7 @@ export interface AppUser {
   loginId: string;
   displayName: string;
   defaultOrganizationId: string;
+  organizationIds?: string[];
   status: AccountStatus;
   passwordChangeRequired?: boolean;
 }
@@ -119,14 +120,19 @@ export interface Membership {
 
 export interface AccountRequest {
   id: string;
+  organizationId: OrganizationId;
   loginId: string;
   displayName: string;
-  role: 'member';
-  status: 'pending' | 'approved' | 'rejected';
+  role: Exclude<OrganizationRole, 'owner'>;
+  status: 'pending' | 'ownerApproved' | 'provisioning' | 'provisioned' | 'rejected';
   requestedBy: string;
-  memberId: string;
+  memberId?: string | null;
   createdAt?: unknown;
-  approvedAt?: unknown;
-  approvedBy?: string;
+  ownerApprovedAt?: unknown;
+  ownerApprovedBy?: string;
+  rejectedAt?: unknown;
+  rejectedBy?: string;
+  provisionedAt?: unknown;
+  provisionedBy?: string;
   approvedUid?: string;
 }

@@ -7,7 +7,11 @@ import type { AppConfig } from '../../services/index';
 import type { AccountRequest, Member, OrganizationId } from '../../types';
 import { IS_DEMO, useAuth } from '../../contexts/auth';
 import { useOrganization, useOrganizationId } from '../../contexts/organization';
-import { createAccountRequest, getAccountRequests } from '../../services/accountRequests';
+import {
+  createAccountRequest,
+  getAccountRequests,
+  reviewAccountRequest,
+} from '../../services/accountRequests';
 import { validateAccountRequestInput } from '../../utils/loginIdentifier';
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -57,8 +61,10 @@ export default function SettingsPage() {
   const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
   const [requestLoginId, setRequestLoginId] = useState('');
   const [requestDisplayName, setRequestDisplayName] = useState('');
+  const [requestRole, setRequestRole] = useState<'member' | 'admin'>('member');
   const [requestMemberId, setRequestMemberId] = useState('');
   const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [reviewingRequestId, setReviewingRequestId] = useState('');
   const [requestMessage, setRequestMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
   const canManageSettings = IS_DEMO
     || membership?.role === 'owner'
@@ -98,6 +104,7 @@ export default function SettingsPage() {
       const input = validateAccountRequestInput(
         requestLoginId,
         requestDisplayName,
+        requestRole,
         requestMemberId,
       );
       setRequestSubmitting(true);
@@ -105,8 +112,9 @@ export default function SettingsPage() {
       await createAccountRequest(organizationId, user.uid, input);
       setRequestLoginId('');
       setRequestDisplayName('');
+      setRequestRole('member');
       setRequestMemberId('');
-      setRequestMessage({ type: 'ok', text: '一般利用者アカウントを申請しました。' });
+      setRequestMessage({ type: 'ok', text: 'アカウントを申請しました。ownerの確認をお待ちください。' });
       await loadAccountRequests(organizationId);
     } catch (error) {
       const duplicate = error instanceof Error
@@ -122,6 +130,49 @@ export default function SettingsPage() {
       });
     } finally {
       setRequestSubmitting(false);
+    }
+  }
+
+  async function handleRequestReview(
+    request: AccountRequest,
+    decision: 'approve' | 'reject',
+    approvedRole: 'member' | 'admin' = request.role,
+  ) {
+    if (membership?.role !== 'owner' || !user) {
+      setRequestMessage({ type: 'error', text: '承認・却下はownerだけが実行できます。' });
+      return;
+    }
+    const action = decision === 'approve'
+      ? `${approvedRole === 'admin' ? '管理者' : '一般利用者'}として承認`
+      : '却下';
+    if (!window.confirm(`${request.displayName}（${request.loginId}）を${action}しますか？`)) return;
+    setReviewingRequestId(request.id);
+    setRequestMessage(null);
+    try {
+      await reviewAccountRequest(
+        organizationId,
+        request.id,
+        user.uid,
+        decision,
+        approvedRole,
+      );
+      setRequestMessage({
+        type: 'ok',
+        text: decision === 'approve'
+          ? 'owner承認が完了しました。管理ツールでのアカウント発行待ちです。'
+          : '申請を却下しました。',
+      });
+      await loadAccountRequests(organizationId);
+    } catch (error) {
+      setRequestMessage({
+        type: 'error',
+        text: error instanceof Error && error.message === 'account-request-already-reviewed'
+          ? 'この申請は既に処理されています。'
+          : '申請を処理できませんでした。',
+      });
+      await loadAccountRequests(organizationId);
+    } finally {
+      setReviewingRequestId('');
     }
   }
 
@@ -276,11 +327,31 @@ export default function SettingsPage() {
               <UserPlus size={18} className="text-blue-700" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-800">一般利用者アカウント申請</h2>
-              <p className="text-xs text-gray-500">権限は安全な既定値「一般利用者」で申請されます</p>
+              <h2 className="font-semibold text-gray-800">アカウント申請・承認</h2>
+              <p className="text-xs text-gray-500">
+                {organization?.name}へ一般利用者または管理者を追加します
+              </p>
             </div>
           </div>
           <form onSubmit={handleAccountRequestSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">権限</label>
+              <select
+                value={requestRole}
+                onChange={(event) => {
+                  const role = event.target.value as 'member' | 'admin';
+                  setRequestRole(role);
+                  if (role === 'admin') setRequestMemberId('');
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              >
+                <option value="member">一般利用者（member）</option>
+                <option value="admin">管理者（admin）</option>
+              </select>
+            </div>
+            {requestRole === 'member' && (
             <div>
               <label className="text-xs text-gray-500 mb-1 block">紐付ける部員</label>
               <select
@@ -302,6 +373,7 @@ export default function SettingsPage() {
                 ))}
               </select>
             </div>
+            )}
             <div>
               <label className="text-xs text-gray-500 mb-1 block">希望ユーザーID</label>
               <input
@@ -332,7 +404,7 @@ export default function SettingsPage() {
               />
             </div>
             <p className="text-xs text-gray-500">
-              パスワードは申請時に入力・保存しません。承認後に管理者が発行します。
+              パスワードは保存しません。owner承認後、staging管理ツールでアカウントを発行します。
             </p>
             {requestMessage && (
               <p className={`text-sm rounded-lg p-3 ${
@@ -357,18 +429,62 @@ export default function SettingsPage() {
               <h3 className="text-sm font-medium text-gray-700 mb-2">申請履歴</h3>
               <div className="space-y-2">
                 {accountRequests.map((request) => (
-                  <div key={request.id} className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
+                  <div key={request.id} className="text-sm bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="font-medium text-gray-800">{request.displayName}</p>
-                      <p className="text-xs text-gray-500">{request.loginId}</p>
+                      <p className="text-xs text-gray-500">
+                        {request.loginId} · {request.role === 'admin' ? '管理者' : '一般利用者'}
+                      </p>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded-full ${
                       request.status === 'pending'
                         ? 'bg-amber-100 text-amber-700'
-                        : 'bg-green-100 text-green-700'
+                        : request.status === 'rejected'
+                          ? 'bg-red-100 text-red-700'
+                          : request.status === 'provisioned'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-blue-100 text-blue-700'
                     }`}>
-                      {request.status === 'pending' ? '承認待ち' : '承認済み'}
+                      {{
+                        pending: 'owner承認待ち',
+                        ownerApproved: 'アカウント発行待ち',
+                        provisioning: '発行処理中',
+                        provisioned: '発行済み',
+                        rejected: '却下',
+                      }[request.status]}
                     </span>
+                    </div>
+                    {membership?.role === 'owner' && request.status === 'pending' && (
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button
+                          type="button"
+                          disabled={reviewingRequestId === request.id}
+                          onClick={() => void handleRequestReview(request, 'reject')}
+                          className="rounded border border-red-300 px-3 py-1 text-xs text-red-700 disabled:opacity-50"
+                        >
+                          却下
+                        </button>
+                        {request.memberId && (
+                          <button
+                            type="button"
+                            disabled={reviewingRequestId === request.id}
+                            onClick={() => void handleRequestReview(request, 'approve', 'member')}
+                            className="rounded bg-green-600 px-3 py-1 text-xs text-white disabled:opacity-50"
+                          >
+                            memberで承認
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={reviewingRequestId === request.id}
+                          onClick={() => void handleRequestReview(request, 'approve', 'admin')}
+                          className="rounded bg-green-600 px-3 py-1 text-xs text-white disabled:opacity-50"
+                        >
+                          adminで承認
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

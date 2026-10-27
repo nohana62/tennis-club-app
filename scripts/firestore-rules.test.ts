@@ -34,6 +34,7 @@ beforeAll(async () => {
         loginId: 'owner-a',
         displayName: 'Owner A',
         defaultOrganizationId: 'club-a',
+        organizationIds: ['club-a'],
         status: 'active',
         passwordChangeRequired: false,
       }],
@@ -41,6 +42,7 @@ beforeAll(async () => {
         loginId: 'forced-a',
         displayName: 'Forced A',
         defaultOrganizationId: 'club-a',
+        organizationIds: ['club-a'],
         status: 'active',
         passwordChangeRequired: true,
       }],
@@ -48,6 +50,7 @@ beforeAll(async () => {
         loginId: 'admin-a',
         displayName: 'Admin A',
         defaultOrganizationId: 'club-a',
+        organizationIds: ['club-a'],
         status: 'active',
         passwordChangeRequired: false,
       }],
@@ -55,6 +58,7 @@ beforeAll(async () => {
         loginId: 'member-a',
         displayName: 'Member A',
         defaultOrganizationId: 'club-a',
+        organizationIds: ['club-a'],
         status: 'active',
         passwordChangeRequired: false,
       }],
@@ -62,6 +66,7 @@ beforeAll(async () => {
         loginId: 'suspended-a',
         displayName: 'Suspended A',
         defaultOrganizationId: 'club-a',
+        organizationIds: ['club-a'],
         status: 'suspended',
         passwordChangeRequired: false,
       }],
@@ -69,13 +74,26 @@ beforeAll(async () => {
         loginId: 'owner-b',
         displayName: 'Owner B',
         defaultOrganizationId: 'club-b',
+        organizationIds: ['club-b'],
+        status: 'active',
+        passwordChangeRequired: false,
+      }],
+      ['users/owner-multi', {
+        loginId: 'owner-multi',
+        displayName: 'Owner Multi',
+        defaultOrganizationId: 'club-a',
+        organizationIds: ['club-a', 'club-b'],
         status: 'active',
         passwordChangeRequired: false,
       }],
       ['organizations/club-a', { name: 'Club A', status: 'active' }],
       ['organizations/club-b', { name: 'Club B', status: 'active' }],
       ['organizations/club-a/memberships/owner-a', { role: 'owner', status: 'active' }],
-      ['organizations/club-a/memberships/forced-a', { role: 'member', status: 'active' }],
+      ['organizations/club-a/memberships/forced-a', {
+        role: 'member',
+        status: 'active',
+        memberId: 'forced-record-a',
+      }],
       ['organizations/club-a/memberships/admin-a', { role: 'admin', status: 'active' }],
       ['organizations/club-a/memberships/member-a', {
         role: 'member',
@@ -88,14 +106,17 @@ beforeAll(async () => {
         memberId: 'suspended-record-a',
       }],
       ['organizations/club-b/memberships/owner-b', { role: 'owner', status: 'active' }],
+      ['organizations/club-a/memberships/owner-multi', { role: 'owner', status: 'active' }],
+      ['organizations/club-b/memberships/owner-multi', { role: 'owner', status: 'active' }],
       ['organizations/club-a/events/event-a', { title: 'A' }],
       ['organizations/club-a/members/member-record-a', { name: 'Member A' }],
+      ['organizations/club-a/members/forced-record-a', { name: 'Forced A' }],
       ['organizations/club-b/events/event-b', { title: 'B' }],
       ['organizations/club-a/posts/post-a', {
-        authorName: 'Member A',
+        authorName: 'Owner A',
         content: 'post',
         important: false,
-        createdBy: 'member-a',
+        createdBy: 'owner-a',
         createdAt: new Date().toISOString(),
       }],
       ['loginIds/reserved-id', { status: 'reserved' }],
@@ -134,16 +155,19 @@ describe('Firestore tenant rules', () => {
     await assertFails(getDoc(doc(suspended, 'organizations/club-a/events/event-a')));
   });
 
+  test('allows an active multi-organization owner to access both memberships', async () => {
+    const owner = environment.authenticatedContext('owner-multi').firestore();
+    await assertSucceeds(getDoc(doc(owner, 'organizations/club-a/events/event-a')));
+    await assertSucceeds(getDoc(doc(owner, 'organizations/club-b/events/event-b')));
+  });
+
   test('revokes member access when the linked member record is missing', async () => {
     const forced = environment.authenticatedContext('forced-a').firestore();
     await environment.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), 'users/forced-a'), {
-        loginId: 'forced-a',
-        displayName: 'Forced A',
-        defaultOrganizationId: 'club-a',
-        status: 'active',
-        passwordChangeRequired: false,
-      });
+      await deleteDoc(doc(
+        context.firestore(),
+        'organizations/club-a/members/forced-record-a',
+      ));
     });
     await assertFails(getDoc(doc(forced, 'organizations/club-a/events/event-a')));
   });
@@ -171,10 +195,12 @@ describe('Firestore tenant rules', () => {
     }));
   });
 
-  test('allows managers to create member requests but never approve them', async () => {
+  test('allows owner/admin requests but only owner review transitions', async () => {
     const owner = environment.authenticatedContext('owner-a').firestore();
+    const admin = environment.authenticatedContext('admin-a').firestore();
     const member = environment.authenticatedContext('member-a').firestore();
     const request = {
+      organizationId: 'club-a',
       loginId: 'new-member',
       displayName: 'New Member',
       role: 'member',
@@ -192,13 +218,45 @@ describe('Firestore tenant rules', () => {
       doc(member, 'organizations/club-a/accountRequests/member-request'),
       { ...request, loginId: 'member-request', requestedBy: 'member-a' },
     ));
+    await assertSucceeds(setDoc(
+      doc(admin, 'organizations/club-a/accountRequests/new-admin'),
+      {
+        ...request,
+        loginId: 'new-admin',
+        requestedBy: 'admin-a',
+        role: 'admin',
+        memberId: null,
+      },
+    ));
+    await assertFails(updateDoc(
+      doc(admin, 'organizations/club-a/accountRequests/new-admin'),
+      {
+        status: 'ownerApproved',
+        ownerApprovedBy: 'admin-a',
+        ownerApprovedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+    ));
     await assertFails(setDoc(
       doc(owner, 'organizations/club-a/accountRequests/reserved-id'),
       { ...request, loginId: 'reserved-id' },
     ));
-    await assertFails(updateDoc(
+    await assertSucceeds(updateDoc(
       doc(owner, 'organizations/club-a/accountRequests/new-member'),
-      { status: 'approved' },
+      {
+        status: 'ownerApproved',
+        ownerApprovedBy: 'owner-a',
+        ownerApprovedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+    ));
+    await assertFails(setDoc(
+      doc(owner, 'organizations/club-b/accountRequests/cross-club'),
+      { ...request, organizationId: 'club-b', loginId: 'cross-club' },
+    ));
+    await assertFails(setDoc(
+      doc(owner, 'organizations/club-a/accountRequests/owner-role'),
+      { ...request, loginId: 'owner-role', role: 'owner' },
     ));
     await assertFails(getDoc(doc(owner, 'loginIds/reserved-id')));
   });

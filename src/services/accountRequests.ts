@@ -27,12 +27,18 @@ export async function getAccountRequests(
 export async function createAccountRequest(
   organizationId: OrganizationId,
   requestedBy: string,
-  input: { loginId: string; displayName: string; memberId: string },
+  input: {
+    loginId: string;
+    displayName: string;
+    role: 'member' | 'admin';
+    memberId?: string | null;
+  },
 ): Promise<void> {
-  const { loginId, displayName, memberId } = validateAccountRequestInput(
+  const { loginId, displayName, role, memberId } = validateAccountRequestInput(
     input.loginId,
     input.displayName,
-    input.memberId,
+    input.role,
+    input.memberId ?? undefined,
   );
   const requestRef = doc(
     db,
@@ -49,13 +55,56 @@ export async function createAccountRequest(
     }
     transaction.set(requestRef, {
       loginId,
+      organizationId,
       displayName,
-      role: 'member',
+      role,
       status: 'pending',
       requestedBy,
       memberId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+  });
+}
+
+export async function reviewAccountRequest(
+  organizationId: OrganizationId,
+  requestId: string,
+  reviewedBy: string,
+  decision: 'approve' | 'reject',
+  role: 'member' | 'admin',
+): Promise<void> {
+  const requestRef = doc(
+    db,
+    'organizations',
+    organizationId,
+    'accountRequests',
+    requestId,
+  );
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(requestRef);
+    if (!snapshot.exists() || snapshot.data().status !== 'pending') {
+      throw new Error('account-request-already-reviewed');
+    }
+    const request = snapshot.data() as AccountRequest;
+    if (decision === 'approve' && role === 'member' && !request.memberId) {
+      throw new Error('member-link-required');
+    }
+    transaction.update(requestRef, decision === 'approve'
+      ? {
+          organizationId,
+          role,
+          status: 'ownerApproved',
+          ownerApprovedBy: reviewedBy,
+          ownerApprovedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }
+      : {
+          organizationId,
+          status: 'rejected',
+          rejectedBy: reviewedBy,
+          rejectedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
   });
 }

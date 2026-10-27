@@ -1,13 +1,16 @@
 import { createContext, useContext } from 'react';
 import type { AppUser, Membership, Organization, OrganizationId } from '../types';
+import type { OrganizationAccess } from '../services/organization';
 
 export interface OrganizationContextValue {
   organizationId: OrganizationId | null;
   userProfile: AppUser | null;
   organization: Organization | null;
   membership: Membership | null;
+  availableOrganizations: OrganizationAccess[];
   loading: boolean;
   error: string;
+  selectOrganization: (organizationId: OrganizationId) => void;
   completePasswordChange: (newPassword: string) => Promise<void>;
 }
 

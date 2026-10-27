@@ -32,8 +32,7 @@ service cloud.firestore {
           || (get(membershipPath(organizationId)).data.memberId is string
             && exists(
               /databases/$(database)/documents/organizations/$(organizationId)/members/$(get(membershipPath(organizationId)).data.memberId)
-            )))
-        && get(userPath()).data.defaultOrganizationId == organizationId;
+            )));
     }
 
     function role(organizationId) {
@@ -43,6 +42,11 @@ service cloud.firestore {
     function isManager(organizationId) {
       return isActiveMember(organizationId)
         && role(organizationId) in ['owner', 'admin'];
+    }
+
+    function isOwner(organizationId) {
+      return isActiveMember(organizationId)
+        && role(organizationId) == 'owner';
     }
 
     function validLoginId(loginId) {
@@ -85,13 +89,18 @@ service cloud.firestore {
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() > 0
           && request.resource.data.displayName.size() <= 80
-          && request.resource.data.role == 'member'
+          && request.resource.data.organizationId == organizationId
+          && request.resource.data.role in ['member', 'admin']
           && request.resource.data.status == 'pending'
           && request.resource.data.requestedBy == request.auth.uid
-          && request.resource.data.memberId is string
-          && exists(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.resource.data.memberId))
+          && ((request.resource.data.role == 'member'
+              && request.resource.data.memberId is string
+              && exists(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.resource.data.memberId)))
+            || (request.resource.data.role == 'admin'
+              && request.resource.data.memberId == null))
           && request.resource.data.keys().hasAll([
             'loginId',
+            'organizationId',
             'displayName',
             'role',
             'status',
@@ -102,6 +111,7 @@ service cloud.firestore {
           ])
           && request.resource.data.keys().hasOnly([
             'loginId',
+            'organizationId',
             'displayName',
             'role',
             'status',
@@ -111,7 +121,44 @@ service cloud.firestore {
             'updatedAt'
           ])
           && !exists(/databases/$(database)/documents/loginIds/$(requestId));
-        allow update, delete: if false;
+        allow update: if isOwner(organizationId)
+          && resource.data.status == 'pending'
+          && request.resource.data.organizationId == organizationId
+          && request.resource.data.loginId == resource.data.loginId
+          && request.resource.data.displayName == resource.data.displayName
+          && request.resource.data.requestedBy == resource.data.requestedBy
+          && request.resource.data.memberId == resource.data.memberId
+          && (
+            (request.resource.data.status == 'ownerApproved'
+              && request.resource.data.role in ['member', 'admin']
+              && (request.resource.data.role == 'admin'
+                || (request.resource.data.memberId is string
+                  && exists(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.resource.data.memberId))))
+              && request.resource.data.ownerApprovedBy == request.auth.uid
+              && request.resource.data.ownerApprovedAt == request.time
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'organizationId',
+                'role',
+                'status',
+                'ownerApprovedBy',
+                'ownerApprovedAt',
+                'updatedAt'
+              ]))
+            || (request.resource.data.status == 'rejected'
+              && request.resource.data.role == resource.data.role
+              && request.resource.data.rejectedBy == request.auth.uid
+              && request.resource.data.rejectedAt == request.time
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'organizationId',
+                'status',
+                'rejectedBy',
+                'rejectedAt',
+                'updatedAt'
+              ]))
+          );
+        allow delete: if false;
       }
 
       match /events/{documentId} {

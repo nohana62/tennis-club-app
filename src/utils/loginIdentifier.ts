@@ -21,13 +21,15 @@ export function createInternalLoginEmail(userId: string): string {
 export interface NormalizedAccountRequestInput {
   loginId: string;
   displayName: string;
-  memberId: string;
+  role: 'member' | 'admin';
+  memberId: string | null;
 }
 
 export function validateAccountRequestInput(
   loginId: string,
   displayName: string,
-  memberId: string,
+  role: 'member' | 'admin',
+  memberId?: string,
 ): NormalizedAccountRequestInput {
   const normalizedLoginId = normalizeLoginPart(loginId);
   const normalizedDisplayName = displayName.trim().normalize('NFKC');
@@ -37,8 +39,14 @@ export function validateAccountRequestInput(
   if (normalizedDisplayName.length < 1 || normalizedDisplayName.length > 80) {
     throw new Error('表示名は1〜80文字で入力してください。');
   }
-  if (!memberId.trim()) {
+  const normalizedMemberId = memberId?.trim() ?? '';
+  if (role === 'member' && !normalizedMemberId) {
     throw new Error('紐付ける部員を選択してください。');
   }
-  return { loginId: normalizedLoginId, displayName: normalizedDisplayName, memberId };
+  return {
+    loginId: normalizedLoginId,
+    displayName: normalizedDisplayName,
+    role,
+    memberId: normalizedMemberId || null,
+  };
 }
