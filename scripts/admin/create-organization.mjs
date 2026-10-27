@@ -71,6 +71,7 @@ try {
     loginId,
     displayName,
     defaultOrganizationId: organizationId,
+    organizationIds: [organizationId],
     status: 'active',
     passwordChangeRequired: true,
     createdAt: FieldValue.serverTimestamp(),

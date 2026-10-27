@@ -69,39 +69,55 @@ function createPendingDb(failBatch = false) {
   return new FakeDb({
     'organizations/club-a': { status: 'active' },
     'organizations/club-a/accountRequests/member-one': {
+      organizationId: 'club-a',
       loginId: 'member-one',
       displayName: 'Member One',
       memberId: 'AbCdEfGhIjKlMnOpQrSt',
       role: 'member',
-      status: 'pending',
+      status: 'ownerApproved',
+      ownerApprovedBy: 'owner-a',
     },
     'organizations/club-a/members/AbCdEfGhIjKlMnOpQrSt': { name: 'Member One' },
   }, failBatch);
 }
 
-test('validates safe member-only requests', () => {
+test('validates owner-approved member and admin requests', () => {
   assert.deepEqual(validateAccountRequest({
+    organizationId: 'club-a',
     loginId: 'member-one',
     displayName: ' Member One ',
     memberId: 'AbCdEfGhIjKlMnOpQrSt',
     role: 'member',
-    status: 'pending',
-  }, 'member-one'), {
+    status: 'ownerApproved',
+    ownerApprovedBy: 'owner-a',
+  }, 'member-one', 'club-a'), {
     loginId: 'member-one',
+    organizationId: 'club-a',
     displayName: 'Member One',
     memberId: 'AbCdEfGhIjKlMnOpQrSt',
     role: 'member',
   });
   assert.throws(
     () => validateAccountRequest({
+      organizationId: 'club-a',
       loginId: 'member-one',
       displayName: 'Member One',
       memberId: 'AbCdEfGhIjKlMnOpQrSt',
       role: 'owner',
-      status: 'pending',
-    }, 'member-one'),
-    /roleはmember/,
+      status: 'ownerApproved',
+      ownerApprovedBy: 'owner-a',
+    }, 'member-one', 'club-a'),
+    /memberまたはadmin/,
   );
+  assert.equal(validateAccountRequest({
+    organizationId: 'club-a',
+    loginId: 'admin-one',
+    displayName: 'Admin One',
+    memberId: null,
+    role: 'admin',
+    status: 'ownerApproved',
+    ownerApprovedBy: 'owner-a',
+  }, 'admin-one', 'club-a').memberId, null);
 });
 
 test('approves a request exactly once and creates member records', async () => {
@@ -133,7 +149,7 @@ test('approves a request exactly once and creates member records', async () => {
   );
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
-    'approved',
+    'provisioned',
   );
   await assert.rejects(
     approveAccountRequest({
@@ -145,6 +161,40 @@ test('approves a request exactly once and creates member records', async () => {
     }),
     /予約または使用/,
   );
+});
+
+test('provisions an owner-approved admin without a member link', async () => {
+  const db = createPendingDb();
+  db.entries.delete('organizations/club-a/accountRequests/member-one');
+  db.entries.set('organizations/club-a/accountRequests/admin-one', {
+    organizationId: 'club-a',
+    loginId: 'admin-one',
+    displayName: 'Admin One',
+    memberId: null,
+    role: 'admin',
+    status: 'ownerApproved',
+    ownerApprovedBy: 'owner-a',
+  });
+  const auth = {
+    createUser: async () => {},
+    getUser: async () => assert.fail('must not roll back a successful provision'),
+    deleteUser: async () => assert.fail('must not roll back a successful provision'),
+  };
+  const result = await approveAccountRequest({
+    auth,
+    db,
+    organizationId: 'club-a',
+    loginId: 'admin-one',
+    temporaryPassword: 'TemporaryPass123!',
+    approvalToken: 'approval-admin',
+  });
+  const membership = db.entries.get(
+    `organizations/club-a/memberships/${result.uid}`,
+  );
+  assert.equal(result.role, 'admin');
+  assert.equal(membership.role, 'admin');
+  assert.equal('memberId' in membership, false);
+  assert.deepEqual(db.entries.get(`users/${result.uid}`).organizationIds, ['club-a']);
 });
 
 test('rolls back Auth and the reservation when the final batch fails', async () => {
@@ -180,7 +230,7 @@ test('rolls back Auth and the reservation when the final batch fails', async () 
   assert.equal(db.entries.has('loginIds/member-one'), false);
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
-    'pending',
+    'ownerApproved',
   );
 });
 
@@ -207,7 +257,7 @@ test('retains the reservation when Auth rollback cannot be confirmed', async () 
   assert.equal(db.entries.get('loginIds/member-one').status, 'reserved');
   assert.equal(
     db.entries.get('organizations/club-a/accountRequests/member-one').status,
-    'approving',
+    'provisioning',
   );
 });
 
@@ -215,7 +265,7 @@ test('requires an explicit recovery and claims it before replacing interrupted A
   const db = createPendingDb();
   db.entries.set('organizations/club-a/accountRequests/member-one', {
     ...db.entries.get('organizations/club-a/accountRequests/member-one'),
-    status: 'approving',
+    status: 'provisioning',
     approvalToken: 'old-token',
   });
   db.entries.set('loginIds/member-one', {

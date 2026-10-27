@@ -7,7 +7,7 @@ import {
   validateId,
 } from './admin-utils.mjs';
 
-export async function listPendingAccountRequests(db, organizationIdInput) {
+export async function listProvisionableAccountRequests(db, organizationIdInput) {
   const organizationId = validateId(organizationIdInput, '団体ID');
   const organization = await db.doc(`organizations/${organizationId}`).get();
   if (!organization.exists || organization.data()?.status !== 'active') {
@@ -15,17 +15,20 @@ export async function listPendingAccountRequests(db, organizationIdInput) {
   }
   const snapshot = await db
     .collection(`organizations/${organizationId}/accountRequests`)
-    .where('status', '==', 'pending')
+    .where('status', '==', 'ownerApproved')
     .get();
   return snapshot.docs
     .map((document) => ({
       id: document.id,
       loginId: document.data().loginId,
       displayName: document.data().displayName,
+      role: document.data().role,
       createdAt: document.data().createdAt?.toDate?.()?.toISOString() ?? '',
     }))
     .sort((left, right) => left.loginId.localeCompare(right.loginId));
 }
+
+export const listPendingAccountRequests = listProvisionableAccountRequests;
 
 export async function approveAccountRequest({
   auth,
@@ -55,7 +58,7 @@ export async function approveAccountRequest({
     ]);
     const request = requestSnapshot.data();
     const login = loginIdSnapshot.data();
-    if (!['approving', 'recovering'].includes(request?.status)) return null;
+    if (!['provisioning', 'recovering'].includes(request?.status)) return null;
     if (
       login?.status !== 'reserved'
       || login.organizationId !== organizationId
@@ -100,7 +103,7 @@ export async function approveAccountRequest({
       }
       transaction.delete(loginIdRef);
       transaction.update(requestRef, {
-        status: 'pending',
+        status: 'ownerApproved',
         approvalToken: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -120,12 +123,18 @@ export async function approveAccountRequest({
       if (loginIdSnapshot.exists) {
         throw new Error('同じユーザーIDが既に予約または使用されています。');
       }
-      const validated = validateAccountRequest(requestSnapshot.data(), loginId);
-      const memberSnapshot = await transaction.get(
-        db.doc(`organizations/${organizationId}/members/${validated.memberId}`),
+      const validated = validateAccountRequest(
+        requestSnapshot.data(),
+        loginId,
+        organizationId,
       );
-      if (!memberSnapshot.exists) {
-        throw new Error('申請に紐付く部員が見つかりません。');
+      if (validated.role === 'member') {
+        const memberSnapshot = await transaction.get(
+          db.doc(`organizations/${organizationId}/members/${validated.memberId}`),
+        );
+        if (!memberSnapshot.exists) {
+          throw new Error('申請に紐付く部員が見つかりません。');
+        }
       }
       transaction.create(loginIdRef, {
         status: 'reserved',
@@ -135,7 +144,7 @@ export async function approveAccountRequest({
         createdAt: FieldValue.serverTimestamp(),
       });
       transaction.update(requestRef, {
-        status: 'approving',
+        status: 'provisioning',
         approvalToken,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -161,7 +170,7 @@ export async function approveAccountRequest({
         loginIdSnapshot.data()?.status !== 'reserved'
         || loginIdSnapshot.data()?.uid !== uid
         || loginIdSnapshot.data()?.approvalToken !== approvalToken
-        || requestSnapshot.data()?.status !== 'approving'
+        || requestSnapshot.data()?.status !== 'provisioning'
         || requestSnapshot.data()?.approvalToken !== approvalToken
       ) {
         throw new Error('承認状態が変更されたため確定できませんでした。');
@@ -170,28 +179,33 @@ export async function approveAccountRequest({
         loginId,
         displayName: requestDetails.displayName,
         defaultOrganizationId: organizationId,
+        organizationIds: [organizationId],
         status: 'active',
         passwordChangeRequired: true,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      transaction.create(db.doc(`organizations/${organizationId}/memberships/${uid}`), {
-        role: 'member',
+      const membership = {
+        role: requestDetails.role,
         status: 'active',
-        memberId: requestDetails.memberId,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if (requestDetails.memberId) membership.memberId = requestDetails.memberId;
+      transaction.create(
+        db.doc(`organizations/${organizationId}/memberships/${uid}`),
+        membership,
+      );
       transaction.update(loginIdRef, {
         status: 'active',
         updatedAt: FieldValue.serverTimestamp(),
         approvalToken: FieldValue.delete(),
       });
       transaction.update(requestRef, {
-        status: 'approved',
+        status: 'provisioned',
         approvedUid: uid,
-        approvedBy,
-        approvedAt: FieldValue.serverTimestamp(),
+        provisionedBy: approvedBy,
+        provisionedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         approvalToken: FieldValue.delete(),
       });
@@ -201,6 +215,7 @@ export async function approveAccountRequest({
       organizationId,
       loginId,
       displayName: requestDetails.displayName,
+      role: requestDetails.role,
       uid,
       temporaryPassword,
     };
@@ -214,7 +229,7 @@ export async function approveAccountRequest({
         ]);
         return loginIdSnapshot.data()?.status === 'active'
           && loginIdSnapshot.data()?.uid === uid
-          && requestSnapshot.data()?.status === 'approved'
+          && requestSnapshot.data()?.status === 'provisioned'
           && requestSnapshot.data()?.approvedUid === uid;
       });
       if (committed) {
@@ -222,6 +237,7 @@ export async function approveAccountRequest({
           organizationId,
           loginId,
           displayName: requestDetails?.displayName ?? '',
+          role: requestDetails?.role ?? '',
           uid,
           temporaryPassword,
         };
@@ -253,7 +269,7 @@ export async function approveAccountRequest({
           }
           if (requestSnapshot.data()?.approvalToken === approvalToken) {
             transaction.update(requestRef, {
-              status: 'pending',
+              status: 'ownerApproved',
               approvalToken: FieldValue.delete(),
               updatedAt: FieldValue.serverTimestamp(),
             });

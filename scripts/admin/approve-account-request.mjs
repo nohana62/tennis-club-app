@@ -14,9 +14,9 @@ try {
     'ユーザーID',
   );
   const confirmation = await prompt.question(
-    `${organizationId} の ${loginId} を一般利用者として承認します。APPROVEと入力: `,
+    `${organizationId} の ${loginId} をowner承認済みの権限で発行します。PROVISIONと入力: `,
   );
-  if (confirmation !== 'APPROVE') throw new Error('承認を中止しました。');
+  if (confirmation !== 'PROVISION') throw new Error('発行を中止しました。');
   if (recoverInterrupted) {
     const recoveryConfirmation = await prompt.question(
       '中断された承認のAuth利用者と予約を取り消して再実行します。RECOVERと入力: ',
@@ -33,13 +33,14 @@ try {
     loginId,
     recoverInterrupted,
   });
-  console.log('アカウント申請を承認しました。');
+  console.log('owner承認済みアカウントを発行しました。');
   console.log(`団体ID: ${result.organizationId}`);
   console.log(`ユーザーID: ${result.loginId}`);
   console.log(`表示名: ${result.displayName}`);
+  console.log(`権限: ${result.role}`);
   console.log(`一時パスワード（再表示不可）: ${result.temporaryPassword}`);
 } catch (error) {
-  console.error(`申請承認失敗: ${error?.message ?? String(error)}`);
+  console.error(`アカウント発行失敗: ${error?.message ?? String(error)}`);
   process.exitCode = 1;
 } finally {
   prompt.close();

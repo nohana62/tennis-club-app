@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:staging": "tsc -b && vite build --mode staging",
     "lint": "oxlint",
     "preview": "vite preview",
     "backup:check": "node scripts/backup-firestore.mjs --check-only --project=tennis-club-app-cb7d2",
@@ -15,6 +16,7 @@
     "admin:create-organization": "node scripts/admin/create-organization.mjs",
     "admin:list-account-requests": "node scripts/admin/list-account-requests.mjs",
     "admin:approve-account-request": "node scripts/admin/approve-account-request.mjs",
+    "admin:link-owner-organization": "node scripts/admin/link-owner-organization.mjs",
     "admin:migrate-root-data": "node scripts/admin/migrate-root-data.mjs",
     "test:backup": "node --test scripts/backup-firestore.test.mjs",
     "test:admin": "node --test scripts/admin/*.test.mjs",

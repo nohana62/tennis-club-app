@@ -41,21 +41,30 @@ export function generateTemporaryPassword(length = 20) {
   ).join('');
 }
 
-export function validateAccountRequest(request, expectedLoginId) {
-  if (!request || request.status !== 'pending') {
-    throw new Error('対象の申請は存在しないか、既に処理されています。');
+export function validateAccountRequest(request, expectedLoginId, expectedOrganizationId) {
+  if (!request || request.status !== 'ownerApproved') {
+    throw new Error('対象の申請はowner承認済みではないか、既に処理されています。');
   }
   const loginId = validateId(request.loginId, 'ユーザーID');
   if (loginId !== expectedLoginId) {
     throw new Error('申請文書のユーザーIDが文書IDと一致しません。');
   }
+  const organizationId = validateId(request.organizationId, '団体ID');
+  if (organizationId !== expectedOrganizationId) {
+    throw new Error('申請文書の団体IDが保存先と一致しません。');
+  }
   const displayName = String(request.displayName ?? '').trim().normalize('NFKC');
   if (!displayName || displayName.length > 80) {
     throw new Error('申請文書の表示名が不正です。');
   }
-  if (request.role !== 'member') {
-    throw new Error('申請文書のroleはmemberである必要があります。');
+  if (!['member', 'admin'].includes(request.role)) {
+    throw new Error('申請文書のroleはmemberまたはadminである必要があります。');
   }
-  const memberId = validateDocumentId(request.memberId, '部員ID');
-  return { loginId, displayName, role: 'member', memberId };
+  if (!request.ownerApprovedBy) {
+    throw new Error('owner承認者が記録されていません。');
+  }
+  const memberId = request.role === 'member'
+    ? validateDocumentId(request.memberId, '部員ID')
+    : null;
+  return { loginId, organizationId, displayName, role: request.role, memberId };
 }
