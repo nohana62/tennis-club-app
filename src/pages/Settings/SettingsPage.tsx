@@ -1,10 +1,18 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Save, Send, CheckCircle, AlertTriangle, ExternalLink, Eye, EyeOff, Lock, Loader2, Plus, X, Pencil, Trash2, GripVertical, Users } from 'lucide-react';
+import { Save, Send, CheckCircle, AlertTriangle, ExternalLink, Eye, EyeOff, Lock, Loader2, Plus, X, Pencil, Trash2, GripVertical, Users, UserPlus } from 'lucide-react';
 import { sendTeamsMessage } from '../../services/teams';
 import { sendLineMessage } from '../../services/line';
 import { getAppConfig, saveAppConfig, getMembers, addMember, updateMember, deleteMember } from '../../services/index';
 import type { AppConfig } from '../../services/index';
-import type { Member } from '../../types';
+import type { AccountRequest, Member, OrganizationId } from '../../types';
+import { IS_DEMO, useAuth } from '../../contexts/auth';
+import { useOrganization, useOrganizationId } from '../../contexts/organization';
+import {
+  createAccountRequest,
+  getAccountRequests,
+  reviewAccountRequest,
+} from '../../services/accountRequests';
+import { validateAccountRequestInput } from '../../utils/loginIdentifier';
 
 const DEFAULT_CONFIG: AppConfig = {
   expensePassword: 'tennis123',
@@ -21,13 +29,16 @@ const EMPTY_MEMBER: Omit<Member, 'id'> = {
   role: 'member',
 };
 
-async function saveOrder(ordered: Member[]) {
+async function saveOrder(organizationId: OrganizationId, ordered: Member[]) {
   await Promise.all(ordered.map((m, i) => {
-    if (m.id && m.order !== i) return updateMember(m.id, { order: i });
+    if (m.id && m.order !== i) return updateMember(organizationId, m.id, { order: i });
   }));
 }
 
 export default function SettingsPage() {
+  const organizationId = useOrganizationId();
+  const { user } = useAuth();
+  const { organization, membership } = useOrganization();
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -47,25 +58,130 @@ export default function SettingsPage() {
   const [showMemberForm, setShowMemberForm] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [memberForm, setMemberForm] = useState<Omit<Member, 'id'>>(EMPTY_MEMBER);
+  const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
+  const [requestLoginId, setRequestLoginId] = useState('');
+  const [requestDisplayName, setRequestDisplayName] = useState('');
+  const [requestRole, setRequestRole] = useState<'member' | 'admin'>('member');
+  const [requestMemberId, setRequestMemberId] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [reviewingRequestId, setReviewingRequestId] = useState('');
+  const [requestMessage, setRequestMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const canManageSettings = IS_DEMO
+    || membership?.role === 'owner'
+    || membership?.role === 'admin';
+  const canRequestAccounts = !IS_DEMO && canManageSettings;
 
   const dragIndex = useRef<number | null>(null);
   const dragOverIndex = useRef<number | null>(null);
 
   useEffect(() => {
-    getAppConfig().then((c) => { setConfig(c); setLoading(false); });
+    if (!canManageSettings) {
+      setLoading(false);
+      return;
+    }
+    getAppConfig(organizationId).then((c) => { setConfig(c); setLoading(false); });
     loadMembers();
-  }, []);
+    if (canRequestAccounts && organization) {
+      void loadAccountRequests(organization.id);
+    }
+  }, [canManageSettings, canRequestAccounts, organization, organizationId]);
 
   async function loadMembers() {
-    setMembers(await getMembers());
+    setMembers(await getMembers(organizationId));
+  }
+
+  async function loadAccountRequests(organizationId: OrganizationId) {
+    setAccountRequests(await getAccountRequests(organizationId));
+  }
+
+  async function handleAccountRequestSubmit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!canRequestAccounts || !organization || !user) {
+      setRequestMessage({ type: 'error', text: 'この操作を行う権限がありません。' });
+      return;
+    }
+    try {
+      const input = validateAccountRequestInput(
+        requestLoginId,
+        requestDisplayName,
+        requestRole,
+        requestMemberId,
+      );
+      setRequestSubmitting(true);
+      setRequestMessage(null);
+      await createAccountRequest(organizationId, user.uid, input);
+      setRequestLoginId('');
+      setRequestDisplayName('');
+      setRequestRole('member');
+      setRequestMemberId('');
+      setRequestMessage({ type: 'ok', text: 'アカウントを申請しました。ownerの確認をお待ちください。' });
+      await loadAccountRequests(organizationId);
+    } catch (error) {
+      const duplicate = error instanceof Error
+        && (error.message === 'account-request-already-exists'
+          || ('code' in error && error.code === 'permission-denied'));
+      setRequestMessage({
+        type: 'error',
+        text: duplicate
+          ? 'このユーザーIDは申請済み、または予約済みです。'
+          : error instanceof Error
+            ? error.message
+            : '申請を保存できませんでした。',
+      });
+    } finally {
+      setRequestSubmitting(false);
+    }
+  }
+
+  async function handleRequestReview(
+    request: AccountRequest,
+    decision: 'approve' | 'reject',
+    approvedRole: 'member' | 'admin' = request.role,
+  ) {
+    if (membership?.role !== 'owner' || !user) {
+      setRequestMessage({ type: 'error', text: '承認・却下はownerだけが実行できます。' });
+      return;
+    }
+    const action = decision === 'approve'
+      ? `${approvedRole === 'admin' ? '管理者' : '一般利用者'}として承認`
+      : '却下';
+    if (!window.confirm(`${request.displayName}（${request.loginId}）を${action}しますか？`)) return;
+    setReviewingRequestId(request.id);
+    setRequestMessage(null);
+    try {
+      await reviewAccountRequest(
+        organizationId,
+        request.id,
+        user.uid,
+        decision,
+        approvedRole,
+      );
+      setRequestMessage({
+        type: 'ok',
+        text: decision === 'approve'
+          ? 'owner承認が完了しました。管理ツールでのアカウント発行待ちです。'
+          : '申請を却下しました。',
+      });
+      await loadAccountRequests(organizationId);
+    } catch (error) {
+      setRequestMessage({
+        type: 'error',
+        text: error instanceof Error && error.message === 'account-request-already-reviewed'
+          ? 'この申請は既に処理されています。'
+          : '申請を処理できませんでした。',
+      });
+      await loadAccountRequests(organizationId);
+    } finally {
+      setReviewingRequestId('');
+    }
   }
 
   async function handleMemberSubmit(ev: React.FormEvent) {
     ev.preventDefault();
     if (editingMember?.id) {
-      await updateMember(editingMember.id, memberForm);
+      await updateMember(organizationId, editingMember.id, memberForm);
     } else {
-      await addMember(memberForm);
+      await addMember(organizationId, memberForm);
     }
     setShowMemberForm(false);
     await loadMembers();
@@ -73,7 +189,7 @@ export default function SettingsPage() {
 
   async function handleMemberDelete(m: Member) {
     if (!m.id || !window.confirm(`「${m.name}」を削除しますか？`)) return;
-    await deleteMember(m.id);
+    await deleteMember(organizationId, m.id);
     await loadMembers();
   }
 
@@ -92,7 +208,7 @@ export default function SettingsPage() {
     const [moved] = next.splice(dragIndex.current, 1);
     next.splice(dragOverIndex.current, 0, moved);
     setMembers(next);
-    await saveOrder(next);
+    await saveOrder(organizationId, next);
     dragIndex.current = null;
     dragOverIndex.current = null;
   }
@@ -118,23 +234,24 @@ export default function SettingsPage() {
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       setMembers(next);
-      await saveOrder(next);
+      await saveOrder(organizationId, next);
     }
     touchItemIndex.current = null;
   }
 
   async function handleSave() {
-    await saveAppConfig(config);
+    await saveAppConfig(organizationId, config);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
 
   async function testTeams() {
     if (!config.teamsWebhookUrl) return;
-    await saveAppConfig({ teamsWebhookUrl: config.teamsWebhookUrl });
+    await saveAppConfig(organizationId, { teamsWebhookUrl: config.teamsWebhookUrl });
     setTeamsTestState('sending');
     try {
       await sendTeamsMessage(
+        organizationId,
         'テスト通知',
         '**テニス部管理アプリ** からのテスト送信です。\n\n設定が正常に完了しています ✅',
         '00a550'
@@ -148,10 +265,10 @@ export default function SettingsPage() {
 
   async function testLine() {
     if (!config.lineToken || !config.lineGroupId) return;
-    await saveAppConfig({ lineToken: config.lineToken, lineGroupId: config.lineGroupId });
+    await saveAppConfig(organizationId, { lineToken: config.lineToken, lineGroupId: config.lineGroupId });
     setLineTestState('sending');
     try {
-      await sendLineMessage('【テニス部】テスト通知\n\n設定が完了しました ✅');
+      await sendLineMessage(organizationId, '【テニス部】テスト通知\n\n設定が完了しました ✅');
       setLineTestState('ok');
     } catch {
       setLineTestState('error');
@@ -172,7 +289,7 @@ export default function SettingsPage() {
       setPwMessage({ type: 'error', text: '新しいパスワードが一致しません' });
       return;
     }
-    await saveAppConfig({ expensePassword: pwNew });
+    await saveAppConfig(organizationId, { expensePassword: pwNew });
     setConfig((c) => ({ ...c, expensePassword: pwNew }));
     setPwCurrent(''); setPwNew(''); setPwConfirm('');
     setPwMessage({ type: 'ok', text: 'パスワードを変更しました（全デバイスに反映）' });
@@ -187,12 +304,194 @@ export default function SettingsPage() {
     );
   }
 
+  if (!canManageSettings) {
+    return (
+      <div className="max-w-2xl bg-white rounded-xl border border-gray-100 p-6">
+        <h1 className="text-xl font-bold text-gray-800 mb-2">設定</h1>
+        <p className="text-sm text-gray-600">この画面はownerまたはadminのみ利用できます。</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-xl font-bold text-gray-800 mb-1">通知設定</h1>
       <p className="text-sm text-gray-500 mb-6">
         設定はデータベースに保存され、全デバイスで共有されます。
       </p>
+
+      {canRequestAccounts && (
+        <section className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+              <UserPlus size={18} className="text-blue-700" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-800">アカウント申請・承認</h2>
+              <p className="text-xs text-gray-500">
+                {organization?.name}へ一般利用者または管理者を追加します
+              </p>
+            </div>
+          </div>
+          <form onSubmit={handleAccountRequestSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">権限</label>
+              <select
+                value={requestRole}
+                onChange={(event) => {
+                  const role = event.target.value as 'member' | 'admin';
+                  setRequestRole(role);
+                  if (role === 'admin') setRequestMemberId('');
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              >
+                <option value="member">一般利用者（member）</option>
+                <option value="admin">管理者（admin）</option>
+              </select>
+            </div>
+            {requestRole === 'member' && (
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">紐付ける部員</label>
+              <select
+                required
+                value={requestMemberId}
+                onChange={(event) => {
+                  const memberId = event.target.value;
+                  const selected = members.find((member) => member.id === memberId);
+                  setRequestMemberId(memberId);
+                  if (selected) setRequestDisplayName(selected.name);
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              >
+                <option value="">部員を選択してください</option>
+                {members.filter((member) => member.id).map((member) => (
+                  <option key={member.id} value={member.id}>{member.name}</option>
+                ))}
+              </select>
+            </div>
+            )}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">希望ユーザーID</label>
+              <input
+                required
+                value={requestLoginId}
+                onChange={(event) => {
+                  setRequestLoginId(event.target.value);
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                placeholder="例: yamada-taro"
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              />
+              <p className="text-xs text-gray-400 mt-1">小文字英数字とハイフンの3〜32文字</p>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">表示名</label>
+              <input
+                required
+                value={requestDisplayName}
+                onChange={(event) => {
+                  setRequestDisplayName(event.target.value);
+                  setRequestMessage(null);
+                }}
+                disabled={requestSubmitting}
+                maxLength={80}
+                className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              パスワードは保存しません。owner承認後、staging管理ツールでアカウントを発行します。
+            </p>
+            {requestMessage && (
+              <p className={`text-sm rounded-lg p-3 ${
+                requestMessage.type === 'ok'
+                  ? 'text-green-700 bg-green-50'
+                  : 'text-red-600 bg-red-50'
+              }`}>
+                {requestMessage.text}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={requestSubmitting}
+              className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-60"
+            >
+              {requestSubmitting && <Loader2 size={16} className="animate-spin" />}
+              {requestSubmitting ? '申請中...' : 'アカウントを申請'}
+            </button>
+          </form>
+          {accountRequests.length > 0 && (
+            <div className="mt-5 border-t pt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">申請履歴</h3>
+              <div className="space-y-2">
+                {accountRequests.map((request) => (
+                  <div key={request.id} className="text-sm bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-gray-800">{request.displayName}</p>
+                      <p className="text-xs text-gray-500">
+                        {request.loginId} · {request.role === 'admin' ? '管理者' : '一般利用者'}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      request.status === 'pending'
+                        ? 'bg-amber-100 text-amber-700'
+                        : request.status === 'rejected'
+                          ? 'bg-red-100 text-red-700'
+                          : request.status === 'provisioned'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {{
+                        pending: 'owner承認待ち',
+                        ownerApproved: 'アカウント発行待ち',
+                        provisioning: '発行処理中',
+                        provisioned: '発行済み',
+                        rejected: '却下',
+                      }[request.status]}
+                    </span>
+                    </div>
+                    {membership?.role === 'owner' && request.status === 'pending' && (
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button
+                          type="button"
+                          disabled={reviewingRequestId === request.id}
+                          onClick={() => void handleRequestReview(request, 'reject')}
+                          className="rounded border border-red-300 px-3 py-1 text-xs text-red-700 disabled:opacity-50"
+                        >
+                          却下
+                        </button>
+                        {request.memberId && (
+                          <button
+                            type="button"
+                            disabled={reviewingRequestId === request.id}
+                            onClick={() => void handleRequestReview(request, 'approve', 'member')}
+                            className="rounded bg-green-600 px-3 py-1 text-xs text-white disabled:opacity-50"
+                          >
+                            memberで承認
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={reviewingRequestId === request.id}
+                          onClick={() => void handleRequestReview(request, 'approve', 'admin')}
+                          className="rounded bg-green-600 px-3 py-1 text-xs text-white disabled:opacity-50"
+                        >
+                          adminで承認
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── 部員管理 ── */}
       <section className="bg-white rounded-xl border border-gray-100 p-5 mb-4">

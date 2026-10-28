@@ -6,8 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:staging": "tsc -b && vite build --mode staging",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backup:check": "node scripts/backup-firestore.mjs --check-only --project=tennis-club-app-cb7d2",
+    "backup": "node scripts/backup-firestore.mjs",
+    "backup:verify": "node scripts/verify-firestore-backup.mjs",
+    "admin:check": "node scripts/admin/check.mjs",
+    "admin:create-organization": "node scripts/admin/create-organization.mjs",
+    "admin:list-account-requests": "node scripts/admin/list-account-requests.mjs",
+    "admin:approve-account-request": "node scripts/admin/approve-account-request.mjs",
+    "admin:link-owner-organization": "node scripts/admin/link-owner-organization.mjs",
+    "admin:migrate-root-data": "node scripts/admin/migrate-root-data.mjs",
+    "test:backup": "node --test scripts/backup-firestore.test.mjs",
+    "test:admin": "node --test scripts/admin/*.test.mjs",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run scripts/firestore-rules.test.ts\"",
+    "test": "vitest run src && npm run test:backup && npm run test:admin"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -27,12 +41,16 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "firebase-admin": "^14.4.0",
+    "firebase-tools": "^14.22.0",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^3.2.4"
   }
 }

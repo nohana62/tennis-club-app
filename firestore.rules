@@ -1,0 +1,235 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function organizationPath(organizationId) {
+      return /databases/$(database)/documents/organizations/$(organizationId);
+    }
+
+    function membershipPath(organizationId) {
+      return /databases/$(database)/documents/organizations/$(organizationId)/memberships/$(request.auth.uid);
+    }
+
+    function isActiveUser() {
+      return signedIn()
+        && get(userPath()).data.status == 'active'
+        && get(userPath()).data.passwordChangeRequired != true;
+    }
+
+    function isActiveMember(organizationId) {
+      return isActiveUser()
+        && get(organizationPath(organizationId)).data.status == 'active'
+        && get(membershipPath(organizationId)).data.status == 'active'
+        && (get(membershipPath(organizationId)).data.role in ['owner', 'admin']
+          || (get(membershipPath(organizationId)).data.memberId is string
+            && exists(
+              /databases/$(database)/documents/organizations/$(organizationId)/members/$(get(membershipPath(organizationId)).data.memberId)
+            )));
+    }
+
+    function role(organizationId) {
+      return get(membershipPath(organizationId)).data.role;
+    }
+
+    function isManager(organizationId) {
+      return isActiveMember(organizationId)
+        && role(organizationId) in ['owner', 'admin'];
+    }
+
+    function isOwner(organizationId) {
+      return isActiveMember(organizationId)
+        && role(organizationId) == 'owner';
+    }
+
+    function validLoginId(loginId) {
+      return loginId.matches('^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$');
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, delete: if false;
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && resource.data.passwordChangeRequired == true
+        && request.resource.data.passwordChangeRequired == false
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['passwordChangeRequired', 'updatedAt'])
+        && request.resource.data.loginId == resource.data.loginId
+        && request.resource.data.defaultOrganizationId == resource.data.defaultOrganizationId
+        && request.resource.data.status == resource.data.status;
+    }
+
+    match /loginIds/{loginId} {
+      allow read, write: if false;
+    }
+
+    match /organizations/{organizationId} {
+      allow read: if isActiveMember(organizationId);
+      allow write: if false;
+
+      match /memberships/{uid} {
+        allow read: if isActiveMember(organizationId)
+          && (request.auth.uid == uid || isManager(organizationId));
+        allow write: if false;
+      }
+
+      match /accountRequests/{requestId} {
+        allow read: if isManager(organizationId);
+        allow create: if isManager(organizationId)
+          && validLoginId(requestId)
+          && request.resource.data.loginId == requestId
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.organizationId == organizationId
+          && request.resource.data.role in ['member', 'admin']
+          && request.resource.data.status == 'pending'
+          && request.resource.data.requestedBy == request.auth.uid
+          && ((request.resource.data.role == 'member'
+              && request.resource.data.memberId is string
+              && exists(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.resource.data.memberId)))
+            || (request.resource.data.role == 'admin'
+              && request.resource.data.memberId == null))
+          && request.resource.data.keys().hasAll([
+            'loginId',
+            'organizationId',
+            'displayName',
+            'role',
+            'status',
+            'requestedBy',
+            'memberId',
+            'createdAt',
+            'updatedAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'loginId',
+            'organizationId',
+            'displayName',
+            'role',
+            'status',
+            'requestedBy',
+            'memberId',
+            'createdAt',
+            'updatedAt'
+          ])
+          && !exists(/databases/$(database)/documents/loginIds/$(requestId));
+        allow update: if isOwner(organizationId)
+          && resource.data.status == 'pending'
+          && request.resource.data.organizationId == organizationId
+          && request.resource.data.loginId == resource.data.loginId
+          && request.resource.data.displayName == resource.data.displayName
+          && request.resource.data.requestedBy == resource.data.requestedBy
+          && request.resource.data.memberId == resource.data.memberId
+          && (
+            (request.resource.data.status == 'ownerApproved'
+              && request.resource.data.role in ['member', 'admin']
+              && (request.resource.data.role == 'admin'
+                || (request.resource.data.memberId is string
+                  && exists(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.resource.data.memberId))))
+              && request.resource.data.ownerApprovedBy == request.auth.uid
+              && request.resource.data.ownerApprovedAt == request.time
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'organizationId',
+                'role',
+                'status',
+                'ownerApprovedBy',
+                'ownerApprovedAt',
+                'updatedAt'
+              ]))
+            || (request.resource.data.status == 'rejected'
+              && request.resource.data.role == resource.data.role
+              && request.resource.data.rejectedBy == request.auth.uid
+              && request.resource.data.rejectedAt == request.time
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'organizationId',
+                'status',
+                'rejectedBy',
+                'rejectedAt',
+                'updatedAt'
+              ]))
+          );
+        allow delete: if false;
+      }
+
+      match /events/{documentId} {
+        allow read: if isActiveMember(organizationId);
+        allow create, update, delete: if isManager(organizationId);
+      }
+
+      match /members/{documentId} {
+        allow read: if isActiveMember(organizationId);
+        allow create, update, delete: if isManager(organizationId);
+      }
+
+      match /attendances/{documentId} {
+        allow read: if isActiveMember(organizationId);
+        allow create: if isActiveMember(organizationId)
+          && (isManager(organizationId)
+            || request.resource.data.memberId
+              == get(membershipPath(organizationId)).data.memberId);
+        allow update: if isActiveMember(organizationId)
+          && request.resource.data.eventId == resource.data.eventId
+          && request.resource.data.memberId == resource.data.memberId
+          && (isManager(organizationId)
+            || resource.data.memberId
+              == get(membershipPath(organizationId)).data.memberId);
+        allow delete: if isManager(organizationId);
+      }
+
+      match /doublesSchedules/{documentId} {
+        allow read: if isActiveMember(organizationId);
+        allow create, update, delete: if isManager(organizationId);
+      }
+
+      match /expenses/{documentId} {
+        allow read: if isActiveMember(organizationId);
+        allow create, update, delete: if isManager(organizationId);
+      }
+
+      match /settings/{documentId} {
+        allow read, create, update: if documentId == 'appConfig'
+          && isManager(organizationId);
+        allow delete: if false;
+      }
+
+      match /posts/{documentId} {
+        allow read: if isActiveMember(organizationId);
+        allow create: if isActiveMember(organizationId)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.authorName == get(userPath()).data.displayName
+          && request.resource.data.keys().hasAll([
+            'authorName',
+            'content',
+            'important',
+            'createdBy',
+            'createdAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'authorName',
+            'content',
+            'important',
+            'createdBy',
+            'createdAt'
+          ]);
+        allow update: if false;
+        allow delete: if isManager(organizationId)
+          || (isActiveMember(organizationId)
+            && resource.data.createdBy == request.auth.uid);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

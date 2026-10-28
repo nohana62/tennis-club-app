@@ -17,6 +17,7 @@ import {
 } from '../../utils/doubles';
 import { isEventCancelled } from '../../utils/events';
 import { buildDoublesGameRanking, hasDoublesScore } from '../../utils/doublesResults';
+import { useOrganizationId } from '../../contexts/organization';
 
 const DEFAULT_MATCH_COUNT = 20;
 const MAX_MATCH_COUNT = 100;
@@ -67,6 +68,7 @@ function getEventParticipants(
 }
 
 export default function DoublesPage() {
+  const organizationId = useOrganizationId();
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
@@ -97,9 +99,9 @@ export default function DoublesPage() {
     (async () => {
       try {
         const [eventData, memberData, attendanceData] = await Promise.all([
-          getEvents(),
-          getMembers(),
-          getAttendances(),
+          getEvents(organizationId),
+          getMembers(organizationId),
+          getAttendances(organizationId),
         ]);
         const sortedEvents = eventData
           .filter((event) => !isEventCancelled(event))
@@ -119,11 +121,12 @@ export default function DoublesPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     if (!selectedEventId) return;
     return subscribeDoublesSchedule(
+      organizationId,
       selectedEventId,
       (schedule) => {
         setSavedSchedule(schedule);
@@ -135,7 +138,7 @@ export default function DoublesPage() {
         setScheduleLoading(false);
       },
     );
-  }, [selectedEventId]);
+  }, [organizationId, selectedEventId]);
 
   const eventParticipants = useMemo(
     () => getEventParticipants(selectedEventId, attendances, members),
@@ -231,6 +234,7 @@ export default function DoublesPage() {
           return;
         }
         const replaced = await replaceDoublesSchedule(
+          organizationId,
           selectedEventId,
           recreatingGenerationId,
           recreatingRevision,
@@ -249,6 +253,7 @@ export default function DoublesPage() {
         setRecreatingRevision(null);
       } else {
         const created = await createDoublesSchedule(
+          organizationId,
           selectedEventId,
           generatedMatches,
           selectedParticipants.length,
@@ -368,6 +373,7 @@ export default function DoublesPage() {
     setError('');
     try {
       const updated = await saveDoublesMatchScore(
+        organizationId,
         selectedEventId,
         scoreDraft.generationId,
         scoreDraft.matchNumber,

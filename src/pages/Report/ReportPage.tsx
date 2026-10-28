@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale';
 import ExcelJS from 'exceljs';
 import { findAttendanceForMember } from '../../utils/attendance';
 import { isEventCancelled } from '../../utils/events';
+import { useOrganizationId } from '../../contexts/organization';
 
 const CATEGORY_LABELS: Record<string, string> = {
   court: 'コート代', ball: 'ボール代', equipment: '用具・備品',
@@ -20,6 +21,7 @@ const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
 type ReportMode = 'monthly' | 'yearly';
 
 export default function ReportPage() {
+  const organizationId = useOrganizationId();
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
@@ -42,11 +44,16 @@ export default function ReportPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [ev, me, at, ex] = await Promise.all([getEvents(), getMembers(), getAttendances(), getExpenses()]);
+      const [ev, me, at, ex] = await Promise.all([
+        getEvents(organizationId),
+        getMembers(organizationId),
+        getAttendances(organizationId),
+        getExpenses(organizationId),
+      ]);
       setEvents(ev); setMembers(me); setAttendances(at); setExpenses(ex);
       setLoading(false);
     })();
-  }, []);
+  }, [organizationId]);
 
   // ── 対象データ ──────────────────────────────────────────
   const prefix = mode === 'monthly' ? reportMonth : reportYear;

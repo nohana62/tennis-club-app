@@ -86,5 +86,53 @@ export interface Post {
   authorName: string;
   content: string;
   important: boolean;
+  createdBy?: string;
   createdAt?: string;
+}
+
+export type OrganizationRole = 'owner' | 'admin' | 'member';
+export type AccountStatus = 'active' | 'suspended';
+declare const organizationIdBrand: unique symbol;
+export type OrganizationId = string & { readonly [organizationIdBrand]: true };
+
+export interface Organization {
+  id: OrganizationId;
+  name: string;
+  status: AccountStatus;
+}
+
+export interface AppUser {
+  uid: string;
+  loginId: string;
+  displayName: string;
+  defaultOrganizationId: string;
+  organizationIds?: string[];
+  status: AccountStatus;
+  passwordChangeRequired?: boolean;
+}
+
+export interface Membership {
+  uid: string;
+  role: OrganizationRole;
+  status: AccountStatus;
+  memberId?: string;
+}
+
+export interface AccountRequest {
+  id: string;
+  organizationId: OrganizationId;
+  loginId: string;
+  displayName: string;
+  role: Exclude<OrganizationRole, 'owner'>;
+  status: 'pending' | 'ownerApproved' | 'provisioning' | 'provisioned' | 'rejected';
+  requestedBy: string;
+  memberId?: string | null;
+  createdAt?: unknown;
+  ownerApprovedAt?: unknown;
+  ownerApprovedBy?: string;
+  rejectedAt?: unknown;
+  rejectedBy?: string;
+  provisionedAt?: unknown;
+  provisionedBy?: string;
+  approvedUid?: string;
 }

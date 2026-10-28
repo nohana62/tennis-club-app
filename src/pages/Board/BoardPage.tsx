@@ -6,8 +6,13 @@ import { sendLineMessage } from '../../services/line';
 import type { Post } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { useOrganization, useOrganizationId } from '../../contexts/organization';
+import { IS_DEMO, useAuth } from '../../contexts/auth';
 
 export default function BoardPage() {
+  const organizationId = useOrganizationId();
+  const { user } = useAuth();
+  const { userProfile, membership } = useOrganization();
   const [posts, setPosts] = useState<Post[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [authorName, setAuthorName] = useState('');
@@ -17,41 +22,52 @@ export default function BoardPage() {
   const [notifyTeams, setNotifyTeams] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const effectiveAuthorName = IS_DEMO ? authorName.trim() : userProfile?.displayName ?? '';
+  const canNotify = IS_DEMO
+    || membership?.role === 'owner'
+    || membership?.role === 'admin';
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [organizationId]);
 
   async function load() {
-    const p = await getPosts();
+    const p = await getPosts(organizationId);
     setPosts(p);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!authorName.trim() || !content.trim()) return;
+    if (!effectiveAuthorName || !content.trim() || (!IS_DEMO && !user)) return;
     setSubmitting(true);
-    await addPost({ authorName: authorName.trim(), content: content.trim(), important });
+    try {
+      await addPost(organizationId, {
+        authorName: effectiveAuthorName,
+        content: content.trim(),
+        important,
+        createdBy: user?.uid ?? 'demo',
+      });
 
-    // 重要フラグONのみ通知
-    if (important) {
-      const title = `📢【重要】${authorName}さんからの投稿`;
-      const body = content.trim();
-      if (notifyTeams) await sendTeamsMessage(title, body, 'ef4444');
-      if (notifyLine) await sendLineMessage(`【テニス部 重要掲示板】\n${authorName}さん:\n${body}`);
+      if (important && canNotify) {
+        const title = `📢【重要】${effectiveAuthorName}さんからの投稿`;
+        const body = content.trim();
+        if (notifyTeams) await sendTeamsMessage(organizationId, title, body, 'ef4444');
+        if (notifyLine) await sendLineMessage(organizationId, `【テニス部 重要掲示板】\n${effectiveAuthorName}さん:\n${body}`);
+      }
+
+      setAuthorName('');
+      setContent('');
+      setImportant(false);
+      setNotifyLine(false);
+      setNotifyTeams(false);
+      setShowForm(false);
+      await load();
+    } finally {
+      setSubmitting(false);
     }
-
-    setAuthorName('');
-    setContent('');
-    setImportant(false);
-    setNotifyLine(false);
-    setNotifyTeams(false);
-    setShowForm(false);
-    setSubmitting(false);
-    await load();
   }
 
   async function handleDelete(post: Post) {
     if (!post.id || !window.confirm('この投稿を削除しますか？')) return;
-    await deletePost(post.id);
+    await deletePost(organizationId, post.id);
     await load();
   }
 
@@ -129,9 +145,10 @@ export default function BoardPage() {
                   required
                   type="text"
                   placeholder="投稿者名"
-                  value={authorName}
+                  value={IS_DEMO ? authorName : effectiveAuthorName}
                   onChange={(e) => setAuthorName(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  readOnly={!IS_DEMO}
+                  className="w-full border rounded-lg px-3 py-2 text-sm read-only:bg-gray-100"
                 />
               </div>
               <div>
@@ -161,7 +178,7 @@ export default function BoardPage() {
               </label>
 
               {/* 通知（重要フラグON時のみ表示） */}
-              {important && (
+              {important && canNotify && (
                 <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                   <p className="text-xs text-gray-500 flex items-center gap-1">
                     <Bell size={12} /> 重要投稿の通知先（設定済みのもののみ有効）

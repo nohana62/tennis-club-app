@@ -16,6 +16,7 @@ import { sendTeamsMessage, buildEventCard } from "../../services/teams";
 import type { ClubEvent, ExpenseCategory, Attendance, AttendanceStatus, Member } from "../../types";
 import { findAttendanceForMember } from "../../utils/attendance";
 import { isEventCancelled } from "../../utils/events";
+import { useOrganizationId } from "../../contexts/organization";
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   practice: "練習", match: "試合", other: "その他",
@@ -41,6 +42,7 @@ const EMPTY_EVENT: Omit<ClubEvent, "id"> = {
 };
 
 export default function SchedulePage() {
+  const organizationId = useOrganizationId();
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -68,7 +70,7 @@ export default function SchedulePage() {
   const [notifyLine, setNotifyLine] = useState(false);
   const [notifyTeams, setNotifyTeams] = useState(false);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { void loadAll(); }, [organizationId]);
 
   // ポップアップ外クリックで閉じる（同一クリックで開いた直後に閉じないよう setTimeout）
   useEffect(() => {
@@ -90,7 +92,11 @@ export default function SchedulePage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [ev, at, me] = await Promise.all([getEvents(), getAttendances(), getMembers()]);
+      const [ev, at, me] = await Promise.all([
+        getEvents(organizationId),
+        getAttendances(organizationId),
+        getMembers(organizationId),
+      ]);
       setEvents(ev); setAttendances(at); setMembers(me);
     } catch { setEvents([]); setAttendances([]); setMembers([]); }
     finally { setLoading(false); }
@@ -136,9 +142,9 @@ export default function SchedulePage() {
             && attendance.memberName.trim() === memberName,
         );
       if (existing?.id) {
-        await updateAttendance(existing.id, { status, comment, memberId, memberName });
+        await updateAttendance(organizationId, existing.id, { status, comment, memberId, memberName });
       } else {
-        await setAttendance({
+        await setAttendance(organizationId, {
           eventId: detailEvent.id,
           memberId,
           memberName,
@@ -146,7 +152,7 @@ export default function SchedulePage() {
           comment,
         });
       }
-      const fresh = await getAttendances();
+      const fresh = await getAttendances(organizationId);
       setAttendances(fresh);
       setSubmitted(true);
     } catch (error) {
@@ -193,7 +199,7 @@ export default function SchedulePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     async function syncExpense(eventId: string) {
-      const expenses = await getExpenses();
+      const expenses = await getExpenses(organizationId);
       const linked = expenses.find((ex) => ex.eventId === eventId);
       const cancelled = isEventCancelled(form);
       const amount = cancelled ? (form.cancellationFee ?? 0) : (form.fee ?? 0);
@@ -208,22 +214,22 @@ export default function SchedulePage() {
           amount,
           paidBy: "",
         };
-        if (linked?.id) await updateExpense(linked.id, expenseData);
-        else await addExpense(expenseData);
+        if (linked?.id) await updateExpense(organizationId, linked.id, expenseData);
+        else await addExpense(organizationId, expenseData);
       } else if (linked?.id) {
-        await deleteExpense(linked.id);
+        await deleteExpense(organizationId, linked.id);
       }
     }
     if (editingEvent?.id) {
-      await updateEvent(editingEvent.id, form);
+      await updateEvent(organizationId, editingEvent.id, form);
       await syncExpense(editingEvent.id);
-      if (notifyLine) await sendLineMessage(buildEventMessage("updated", form.title, form.date, form.location, form.status));
-      if (notifyTeams) { const c = buildEventCard("updated", form.title, form.date, form.location, form.status); await sendTeamsMessage(c.title, c.text, c.color); }
+      if (notifyLine) await sendLineMessage(organizationId, buildEventMessage("updated", form.title, form.date, form.location, form.status));
+      if (notifyTeams) { const c = buildEventCard("updated", form.title, form.date, form.location, form.status); await sendTeamsMessage(organizationId, c.title, c.text, c.color); }
     } else {
-      const newId = await addEvent(form);
+      const newId = await addEvent(organizationId, form);
       await syncExpense(newId);
-      if (notifyLine) await sendLineMessage(buildEventMessage("added", form.title, form.date, form.location, form.status));
-      if (notifyTeams) { const c = buildEventCard("added", form.title, form.date, form.location, form.status); await sendTeamsMessage(c.title, c.text, c.color); }
+      if (notifyLine) await sendLineMessage(organizationId, buildEventMessage("added", form.title, form.date, form.location, form.status));
+      if (notifyTeams) { const c = buildEventCard("added", form.title, form.date, form.location, form.status); await sendTeamsMessage(organizationId, c.title, c.text, c.color); }
     }
     setShowForm(false);
     await loadAll();
@@ -231,12 +237,12 @@ export default function SchedulePage() {
 
   async function handleDelete(event: ClubEvent) {
     if (!event.id || !window.confirm(`「${event.title}」を削除しますか？`)) return;
-    const expenses = await getExpenses();
+    const expenses = await getExpenses(organizationId);
     const linked = expenses.find((ex) => ex.eventId === event.id);
-    if (linked?.id) await deleteExpense(linked.id);
-    await deleteEvent(event.id);
-    if (notifyLine) await sendLineMessage(buildEventMessage("deleted", event.title, event.date, event.location));
-    if (notifyTeams) { const c = buildEventCard("deleted", event.title, event.date, event.location); await sendTeamsMessage(c.title, c.text, c.color); }
+    if (linked?.id) await deleteExpense(organizationId, linked.id);
+    await deleteEvent(organizationId, event.id);
+    if (notifyLine) await sendLineMessage(organizationId, buildEventMessage("deleted", event.title, event.date, event.location));
+    if (notifyTeams) { const c = buildEventCard("deleted", event.title, event.date, event.location); await sendTeamsMessage(organizationId, c.title, c.text, c.color); }
     await loadAll();
   }
 
